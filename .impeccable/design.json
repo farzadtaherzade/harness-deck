@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-01T00:00:00Z",
+  "title": "Design System: هرنس — Harness Deck System",
+  "extensions": {
+    "colorMeta": {
+      "near-black": { "role": "neutral", "displayName": "Near-black Field", "canonical": "#1C1C1C", "tonalRamp": ["#1C1C1C", "#262626", "#303030", "#3d3d3d", "#4d4d4d", "#616161", "#7a7a7a", "#969696"] },
+      "acid": { "role": "primary", "displayName": "Acid", "canonical": "#F5D200", "tonalRamp": ["#4d4200", "#6b5c00", "#8a7400", "#a88e00", "#c7a800", "#F5D200", "#f8e155", "#fbe98a"] },
+      "acid-60": { "role": "primary", "displayName": "Acid 60 (secondary copy)", "canonical": "rgba(245,210,0,0.6)", "tonalRamp": ["#4d4200", "#6b5c00", "#8a7400", "#a88e00", "#c7a800", "#F5D200", "#f8e155", "#fbe98a"] },
+      "tire-dark": { "role": "neutral", "displayName": "Tire / Ink", "canonical": "#141414", "tonalRamp": ["#141414", "#1C1C1C", "#262626", "#303030", "#3d3d3d", "#4d4d4d", "#616161", "#7a7a7a"] },
+      "headlight": { "role": "tertiary", "displayName": "Headlight Cream", "canonical": "#fff6c9", "tonalRamp": ["#fff6c9", "#fff8d4", "#fffade", "#fffcE8", "#fffdf0", "#fffef5", "#fffffa", "#ffffff"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Lalezar Display", "purpose": "Type-as-graphic-mass; one shout per slide." },
+      "body": { "displayName": "Vazirmatn Body", "purpose": "Farsi prose, RTL, never gray — acid at 60%." },
+      "label": { "displayName": "JetBrains Mono Chrome", "purpose": "Latin technical labels and terminal output, always LTR." }
+    },
+    "motion": [
+      { "name": "ease-out-expo", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Every entrance and state transition." },
+      { "name": "scene-ease", "value": "exponential smoothing ~2.5/s", "purpose": "3D camera and car-part tweens between slide scenes." }
+    ],
+    "breakpoints": [
+      { "name": "stage", "value": "1920x1080 fixed, uniform scale-to-fit, letterbox only" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Square acid-outline button; fills acid on hover/active.",
+      "html": "<button class=\"ds-btn-primary\">باز شدن قطعات</button>",
+      "css": ".ds-btn-primary { font-family: Vazirmatn, sans-serif; font-size: 26px; font-weight: 700; color: #F5D200; background: transparent; border: 2px solid #F5D200; padding: 16px 38px; cursor: pointer; transition: background 0.25s ease, color 0.25s ease; border-radius: 0; } .ds-btn-primary:hover { background: #F5D200; color: #1C1C1C; } .ds-btn-primary:focus-visible { outline: 2px dashed rgba(245,210,0,0.6); outline-offset: 3px; }"
+    },
+    {
+      "name": "Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Small metadata chip for slide headers.",
+      "html": "<span class=\"ds-chip\">شبیه‌سازی آفلاین، بدون مدل واقعی</span>",
+      "css": ".ds-chip { display: inline-block; font-family: Vazirmatn, sans-serif; font-size: 20px; font-weight: 600; border: 1px solid rgba(245,210,0,0.38); padding: 8px 18px; color: rgba(245,210,0,0.6); border-radius: 0; }"
+    },
+    {
+      "name": "Drafting Callout",
+      "kind": "custom",
+      "refersTo": "chip",
+      "description": "Dot + 84px leader line + label with mono sub-label; the world's signature annotation.",
+      "html": "<div class=\"ds-co\"><span class=\"ds-dot\"></span><span class=\"ds-ln\"></span><span class=\"ds-tx\">ابزارها<small>TOOLS</small></span></div>",
+      "css": ".ds-co { display: flex; align-items: center; direction: rtl; } .ds-co .ds-dot { width: 10px; height: 10px; background: #F5D200; flex: none; } .ds-co .ds-ln { width: 84px; height: 1px; background: rgba(245,210,0,0.38); flex: none; } .ds-co .ds-tx { font-family: Vazirmatn, sans-serif; font-size: 25px; font-weight: 600; color: #F5D200; white-space: nowrap; padding: 0 14px; } .ds-co .ds-tx small { display: block; font-family: 'JetBrains Mono', monospace; font-size: 15px; color: rgba(245,210,0,0.6); direction: ltr; text-align: right; }"
+    },
+    {
+      "name": "Deck Navigation",
+      "kind": "nav",
+      "refersTo": "button-primary",
+      "description": "Fixed bottom-center chrome with RTL chevrons and Persian-digit counter.",
+      "html": "<nav class=\"ds-nav\"><button aria-label=\"prev\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M12 4 L6 10 L12 16\"/></svg></button><span class=\"ds-count\">۰۱ / ۱۴</span><button aria-label=\"next\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M8 4 L14 10 L8 16\"/></svg></button></nav>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: 18px; background: #1C1C1C; border: 1px solid rgba(245,210,0,0.16); padding: 10px 16px; direction: rtl; } .ds-nav button { background: transparent; border: 1px solid rgba(245,210,0,0.38); color: #F5D200; width: 46px; height: 46px; cursor: pointer; display: grid; place-items: center; border-radius: 0; } .ds-nav button:hover { background: #F5D200; color: #1C1C1C; } .ds-nav .ds-count { font-family: Vazirmatn, sans-serif; font-size: 20px; font-weight: 600; color: #F5D200; min-width: 96px; text-align: center; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Living Blueprint",
+    "overview": "Every slide is an engineering drawing sheet: a faint acid grid on near-black, registration crosses, drafting callouts, and one persistent 3D car rendered as a technical object — acid faces, ink edges, a drafting-grid floor. The binary palette is absolute; Farsi is the voice and the car drives in the direction of reading.",
+    "keyCharacteristics": ["Binary palette: acid on near-black, nothing else", "Drafting vocabulary: callouts, dimension marks, title blocks, registration crosses", "One persistent Three.js car across 14 choreographed scenes", "Zero dependencies: single self-contained HTML file", "Fixed 1920×1080 stage, letterboxed, never reflowed"],
+    "rules": [
+      { "name": "The Binary Rule", "body": "No third color exists. Code syntax is expressed with weight, strikethrough, and opacity — never red or green.", "section": "colors" }
+    ],
+    "dos": ["Do keep every color a tint of #F5D200 or #1C1C1C", "Do set terminal/code runs LTR inside the RTL page", "Do reuse the dot+leader callout for part annotations"],
+    "donts": ["Don't add a third hue, rounded corners, or box shadows", "Don't reflow slide content per device", "Don't switch slides with display:none", "Don't let copy sit on acid surfaces or labels on the acid car body"]
+  }
+}

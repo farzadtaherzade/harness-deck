@@ -1,0 +1,759 @@
+
+</script>
+<script>
+/* ===========================================
+   HARNESS DECK — APPLICATION
+   1. helpers
+   2. inline editor (restores saved text first)
+   3. presentation controller (RTL nav)
+   4. 3D scene manager — one persistent car, 14 scenes
+   5. simulations (deterministic, offline)
+   =========================================== */
+'use strict';
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
+const fa = n => String(n).replace(/\d/g, d => FA_DIGITS[d]);
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+
+/* ===========================================
+   2. INLINE EDITOR
+   Included by default: hover hotzone (top-left),
+   E key, Ctrl+S save, per-slide localStorage.
+   =========================================== */
+const EDIT_KEY = 'harness.slides.v4'; /* v4: two-worlds slide, cine sims, models & tokens slides */
+const editToggle = $('#editToggle'), editBanner = $('#editBanner'), editNote = $('#editNote');
+const editHotzone = $('.edit-hotzone');
+let editing = false, hideT = null, saveT = null, noteT = null;
+
+/* restore saved text before anything binds listeners */
+(function restoreSaved() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(EDIT_KEY) || 'null');
+    if (!saved) return;
+    $$('.slide').forEach((sl, i) => { if (typeof saved[i] === 'string' && saved[i].length > 40) sl.innerHTML = saved[i]; });
+  } catch (e) { /* corrupt save: ignore */ }
+})();
+
+function setEditable(on) {
+  $$('.slide h1, .slide h2, .slide p, .slide li, .slide .tx, .slide .v, .slide .fa').forEach(el => {
+    if (on) el.setAttribute('contenteditable', 'true');
+    else el.removeAttribute('contenteditable');
+  });
+}
+function saveNow(showFlash = true) {
+  const map = $$('.slide').map(sl => sl.innerHTML);
+  try { localStorage.setItem(EDIT_KEY, JSON.stringify(map)); } catch (e) { /* quota */ }
+  if (showFlash) {
+    editNote.classList.add('show');
+    clearTimeout(noteT); noteT = setTimeout(() => editNote.classList.remove('show'), 1400);
+  }
+}
+function toggleEdit() {
+  editing = !editing;
+  editToggle.classList.toggle('active', editing);
+  editBanner.classList.toggle('show', editing);
+  setEditable(editing);
+  if (!editing) saveNow();
+}
+editToggle.addEventListener('click', toggleEdit);
+editHotzone.addEventListener('click', toggleEdit);
+editHotzone.addEventListener('mouseenter', () => { clearTimeout(hideT); editToggle.classList.add('show'); });
+editHotzone.addEventListener('mouseleave', () => { hideT = setTimeout(() => { if (!editing) editToggle.classList.remove('show'); }, 400); });
+editToggle.addEventListener('mouseenter', () => clearTimeout(hideT));
+editToggle.addEventListener('mouseleave', () => { hideT = setTimeout(() => { if (!editing) editToggle.classList.remove('show'); }, 400); });
+document.addEventListener('input', e => {
+  if (editing && e.target.closest('.slide')) { clearTimeout(saveT); saveT = setTimeout(() => saveNow(false), 700); }
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'e' || e.key === 'E' || e.key === 'ی') && !e.target.isContentEditable && !e.ctrlKey && !e.metaKey && !e.altKey) toggleEdit();
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { if (editing) { e.preventDefault(); saveNow(); } }
+});
+
+/* ===========================================
+   3. PRESENTATION CONTROLLER — RTL navigation
+   Forward = ArrowLeft / Space / PageDown / wheel-down /
+   swipe left. Buttons live in .deck-controls.
+   =========================================== */
+class Presentation {
+  constructor(startIndex = 0) {
+    this.slides = $$('.slide');
+    this.i = 0;
+    this.stage = $('#deckStage');
+    this.setupStageScale();
+    this.setupKeyboard();
+    this.setupWheel();
+    this.setupTouch();
+    $('#btnPrev').addEventListener('click', () => this.go(this.i - 1));
+    $('#btnNext').addEventListener('click', () => this.go(this.i + 1));
+    this.showSlide(startIndex);
+  }
+  setupStageScale() {
+    const scale = () => {
+      const f = Math.min(innerWidth / 1920, innerHeight / 1080);
+      this.stage.style.transform = `translate(${(innerWidth - 1920 * f) / 2}px, ${(innerHeight - 1080 * f) / 2}px) scale(${f})`;
+    };
+    scale(); addEventListener('resize', scale);
+  }
+  setupKeyboard() {
+    document.addEventListener('keydown', e => {
+      if (e.target.isContentEditable || e.ctrlKey || e.metaKey || e.altKey) return;
+      switch (e.key) {
+        case 'ArrowLeft': case ' ': case 'PageDown': e.preventDefault(); this.go(this.i + 1); break;
+        case 'ArrowRight': case 'PageUp': e.preventDefault(); this.go(this.i - 1); break;
+        case 'Home': e.preventDefault(); this.go(0); break;
+        case 'End': e.preventDefault(); this.go(this.slides.length - 1); break;
+      }
+    });
+  }
+  setupWheel() {
+    let lock = 0;
+    document.addEventListener('wheel', e => {
+      if (editing || e.target.isContentEditable) return;
+      const now = Date.now();
+      if (now - lock < 800 || Math.abs(e.deltaY) < 12) return;
+      lock = now;
+      this.go(this.i + (e.deltaY > 0 ? 1 : -1));
+    }, { passive: true });
+  }
+  setupTouch() {
+    let x0 = null, y0 = null;
+    const stageBox = $('.deck-viewport');
+    stageBox.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+    stageBox.addEventListener('touchend', e => {
+      if (x0 === null || window.__orbitCapture) { x0 = null; return; }
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) this.go(this.i + (dx < 0 ? 1 : -1));
+      x0 = null;
+    }, { passive: true });
+  }
+  go(n) { this.showSlide(n); }
+  showSlide(n) {
+    n = Math.max(0, Math.min(n, this.slides.length - 1));
+    this.i = n;
+    this.slides.forEach((sl, i) => {
+      sl.classList.toggle('active', i === n);
+      sl.classList.toggle('visible', i === n);
+    });
+    $('#slideCount').textContent = `${fa(n + 1)} / ${fa(this.slides.length)}`;
+    $('#progressBar').style.transform = `scaleX(${(n + 1) / this.slides.length})`;
+    document.dispatchEvent(new CustomEvent('slidechange', { detail: { index: n, slide: this.slides[n] } }));
+  }
+}
+
+/* ===========================================
+   4. 3D SCENE MANAGER — three.js r128
+   One car, fourteen scenes. The car is drawn in the
+   world's own language: acid faces, ink edges, a
+   drafting grid for a floor.
+   =========================================== */
+const canvas = $('#gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setSize(1920, 1080, false);
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x1C1C1C, 11, 26);
+const camera = new THREE.PerspectiveCamera(38, 1920 / 1080, 0.1, 120);
+
+/* lights */
+scene.add(new THREE.AmbientLight(0x8a8672, 0.8));
+const key = new THREE.DirectionalLight(0xfff2b8, 0.95); key.position.set(4, 7, 3); scene.add(key);
+const rim = new THREE.DirectionalLight(0xF5D200, 0.35); rim.position.set(-5, 3, -4); scene.add(rim);
+
+/* drafting-grid floor: two grids leapfrog for endless scroll */
+const gridGroup = new THREE.Group(); scene.add(gridGroup);
+const mkGrid = () => {
+  const g = new THREE.GridHelper(48, 20, 0x4a431a, 0x2f2b16);
+  g.material.transparent = true; g.material.opacity = 0.5;
+  return g;
+};
+const gridA = mkGrid(), gridB = mkGrid();
+gridB.position.z = -2.4;
+gridGroup.add(gridA, gridB);
+
+/* --- the car --- */
+const MAT = {
+  acid: new THREE.MeshLambertMaterial({ color: 0xF5D200 }),
+  dark: new THREE.MeshLambertMaterial({ color: 0x141414 }),
+  ink: new THREE.LineBasicMaterial({ color: 0x241f06 }),
+  head: new THREE.MeshBasicMaterial({ color: 0xfff6c9 })
+};
+const edged = geo => new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), MAT.ink);
+function makePart(geo, mat = MAT.acid) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geo, mat)); g.add(edged(geo));
+  return g;
+}
+const car = new THREE.Group(); scene.add(car);
+const P = {};
+P.chassis = makePart(new THREE.BoxGeometry(4.4, 0.7, 2.0)); P.chassis.position.set(0, 0.75, 0);
+/* the car faces -x: RTL reading direction is "forward" */
+P.engine = makePart(new THREE.BoxGeometry(1.15, 0.85, 1.05)); P.engine.position.set(-1.55, 0.85, 0);
+[-0.3, 0, 0.3].forEach(x => {
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.92), MAT.dark);
+  fin.position.set(x, 0.46, 0); P.engine.add(fin);
+});
+P.cabin = makePart(new THREE.BoxGeometry(2.3, 0.75, 1.8)); P.cabin.position.set(0.35, 1.5, 0);
+P.wheels = [];
+[[1.55, 1.02], [1.55, -1.02], [-1.55, 1.02], [-1.55, -1.02]].forEach(([x, z]) => {
+  const w = new THREE.Group(); w.position.set(x, 0.45, z); w.userData = { bx: x, bz: z };
+  const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.34, 20), MAT.dark);
+  tire.rotation.x = Math.PI / 2;
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.36, 12), MAT.acid);
+  hub.rotation.x = Math.PI / 2;
+  const rimLines = edged(new THREE.CylinderGeometry(0.45, 0.45, 0.34, 20));
+  rimLines.rotation.x = Math.PI / 2;
+  w.add(tire, hub, rimLines);
+  P.wheels.push(w); car.add(w);
+});
+P.headlights = [];
+/* headlights ride on the chassis so they appear and vanish with it */
+[[0.6], [-0.6]].forEach(([z]) => {
+  const h = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.34), MAT.head);
+  h.position.set(-2.26, 0.2, z); P.headlights.push(h); P.chassis.add(h);
+});
+car.add(P.chassis, P.engine, P.cabin); /* wheels join at creation; headlights stay under the chassis */
+
+/* --- dimension extras --- */
+const EX = {};
+/* route (plan mode) */
+{
+  const pts = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-2.2, 0.05, 0), new THREE.Vector3(-3.6, 0.05, -1.1), new THREE.Vector3(-5.1, 0.05, -2.3)
+  ]).getPoints(60);
+  EX.route = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xF5D200 }));
+  EX.route.geometry.setDrawRange(0, 0);
+  EX.ring = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.05, 8, 36), new THREE.MeshBasicMaterial({ color: 0xF5D200 }));
+  EX.ring.rotation.x = Math.PI / 2; EX.ring.position.set(-5.1, 0.05, -2.3);
+  EX.ring.scale.setScalar(0.001);
+}
+/* sandbox pen */
+{
+  EX.pen = new THREE.Group();
+  [[3.4, 2.6], [3.4, -2.6], [-3.4, 2.6], [-3.4, -2.6]].forEach(([x, z]) => {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1, 0.12), MAT.dark);
+    post.position.set(x, 0.5, z); EX.pen.add(post);
+  });
+  const ropePts = [[3.4, 2.6], [3.4, -2.6], [-3.4, -2.6], [-3.4, 2.6], [3.4, 2.6]]
+    .map(([x, z]) => new THREE.Vector3(x, 1, z));
+  EX.pen.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ropePts), new THREE.LineBasicMaterial({ color: 0xF5D200 })));
+  EX.pen.scale.setScalar(0.001);
+}
+/* skill cartridge */
+{
+  EX.cartridge = new THREE.Group();
+  const body = makePart(new THREE.BoxGeometry(0.52, 0.34, 0.74));
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.09, 0.76), MAT.dark);
+  EX.cartridge.add(body, stripe);
+  EX.cartridge.position.set(-7, 4.6, 2.2);
+  EX.cartridge.scale.setScalar(0.001);
+}
+/* MCP socket + plugs — the universal port sits on the car's nose */
+{
+  EX.socket = new THREE.Group();
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.66, 0.62), MAT.dark);
+  EX.socket.add(plate);
+  for (let i = 0; i < 3; i++) {
+    const hole = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.14), MAT.acid);
+    hole.position.set(-0.07, 0.14 - i * 0.14, 0);
+    EX.socket.add(hole);
+  }
+  EX.socket.scale.setScalar(0.001);
+  EX.plugs = [0, 1, 2].map(i => {
+    const g = new THREE.Group();
+    g.add(makePart(new THREE.BoxGeometry(0.5, 0.3, 0.3)));
+    g.scale.setScalar(0.001);
+    return g;
+  });
+}
+Object.values(EX).forEach(v => (Array.isArray(v) ? v : [v]).forEach(g => { if (g.parent !== scene) scene.add(g); }));
+
+/* --- enrichment props: gear halo, sandbox cones, project emblems --- */
+/* gear halo around the bare engine (slides 2-3) */
+{
+  EX.gear = new THREE.Group();
+  EX.gear.add(new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.07, 10, 40), MAT.acid));
+  for (let i = 0; i < 6; i++) {
+    const a = i / 6 * Math.PI * 2;
+    const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.14), MAT.dark);
+    tooth.position.set(Math.cos(a) * 1.05, Math.sin(a) * 1.05, 0);
+    tooth.rotation.z = a;
+    EX.gear.add(tooth);
+  }
+  EX.gear.scale.setScalar(0.001);
+  scene.add(EX.gear);
+}
+/* obstacle cones inside the sandbox pen (slide 15) */
+{
+  EX.cones = new THREE.Group();
+  [[2.55, 0], [-1.3, 2.2], [-1.3, -2.2]].forEach(([x, z]) => {
+    const geo = new THREE.ConeGeometry(0.34, 0.85, 4);
+    const cone = new THREE.Mesh(geo, MAT.acid);
+    cone.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), MAT.ink));
+    cone.position.set(x, 0.43, z);
+    EX.cones.add(cone);
+  });
+  EX.cones.scale.setScalar(0.001);
+  scene.add(EX.cones);
+}
+/* project emblems (slides 16-18): car stays off-frame, an emblem takes the stage */
+{
+  EX.cells = new THREE.Group();
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+    const cell = makePart(new THREE.BoxGeometry(0.55, 0.55, 0.55));
+    cell.position.set((c - 1) * 0.75, 1.0 + ((r + c) % 2) * 0.4, (r - 1) * 0.75);
+    EX.cells.add(cell);
+  }
+  EX.cells.scale.setScalar(0.001);
+  scene.add(EX.cells);
+
+  EX.cube = new THREE.Group();
+  EX.cube.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(2.2, 2.2, 2.2)), new THREE.LineBasicMaterial({ color: 0xF5D200 })));
+  EX.cube.add(makePart(new THREE.BoxGeometry(0.9, 0.9, 0.9)));
+  EX.cube.position.y = 0.9;
+  EX.cube.scale.setScalar(0.001);
+  scene.add(EX.cube);
+
+  EX.rings = new THREE.Group();
+  [1.1, 1.6, 2.1].forEach((rad, i) => {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(rad, 0.05, 8, 48), MAT.acid);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 1.15 - i * 0.07;
+    EX.rings.add(ring);
+  });
+  EX.rings.scale.setScalar(0.001);
+  scene.add(EX.rings);
+}
+
+/* --- scene book --- */
+const SCENES = {
+  hidden:      { carX: 0,    cam: { r: 14, theta: 0.0, phi: 1.25, ty: 1 },    parts: {}, gridOp: 0.3 },
+  engine:      { carX: -2.6, cam: { r: 9.5, theta: -0.55, phi: 1.2, ty: 1, lookX: -4.15 },  parts: { engine: 1 }, fx: { gear: true }, gridOp: 0.5 },
+  'engine-close': { carX: -2.8, cam: { r: 3.4, theta: -0.5, phi: 1.2, ty: 0.95, lookX: -3.7 }, parts: { engine: 1 }, spin: true, fx: { gear: true }, gridOp: 0.5 },
+  assemble:    { carX: -2.2, cam: { r: 12.5, theta: -0.5, phi: 1.18, ty: 1 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, stagger: true, gridOp: 0.5 },
+  driving:     { carX: -2.2, cam: { r: 15.5, theta: -0.7, phi: 1.15, ty: 0.85 }, parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, drive: 1, gridOp: 0.5 },
+  showcase:    { carX: 0,    cam: { r: 15, theta: -0.7, phi: 0.72, ty: 0.9 },    parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, orbit: true, gridOp: 0.45 },
+  parked:      { carX: -8.6, cam: { r: 14.5, theta: -0.35, phi: 1.2, ty: 1 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, gridOp: 0.4 },
+  skill:       { carX: -2.6, cam: { r: 15.5, theta: -0.6, phi: 1.15, ty: 0.85 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { cartridge: true }, gridOp: 0.45 },
+  mcp:         { carX: -1.2, cam: { r: 17.5, theta: -1.0, phi: 1.05, ty: 0.9 },   parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { socket: true, plugs: true }, gridOp: 0.45 },
+  plan:        { carX: -2.6, cam: { r: 13.5, theta: -0.5, phi: 1.05, ty: 0.8 }, parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { route: true }, gridOp: 0.45 },
+  sandbox:     { carX: 0,    cam: { r: 15.5, theta: -0.7, phi: 1.1, ty: 0.9 }, parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { pen: true, cones: true }, circle: true, gridOp: 0.45 },
+  exploded:    { carX: 0,    cam: { r: 18.5, theta: -0.6, phi: 1.05, ty: 1.2 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, explode: 1, orbitSlow: true, fx: { cartridge: true, socket: true, plugs: true, route: true, pen: true }, gridOp: 0.45 },
+  huehunch:    { carX: 0,    cam: { r: 12, theta: -0.55, phi: 1.1, ty: 0.95, lookX: 1.8 }, parts: {}, fx: { emblem: 'cells' }, gridOp: 0.45 },
+  arena:       { carX: 0,    cam: { r: 12, theta: -0.55, phi: 1.1, ty: 0.95, lookX: 1.8 }, parts: {}, fx: { emblem: 'cube' }, gridOp: 0.45 },
+  raid:        { carX: 0,    cam: { r: 12, theta: -0.55, phi: 1.1, ty: 0.95, lookX: 1.8 }, parts: {}, fx: { emblem: 'rings' }, gridOp: 0.45 },
+  leave:       { carX: 0,    cam: { r: 13, theta: -0.7, phi: 1.15, ty: 1 },    parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, drive: 2.2, depart: true, gridOp: 0.5 }
+};
+
+/* state — everything eases toward its scene target */
+const st = { carX: 0, r: 14, theta: 0, phi: 1.25, ty: 1, lookX: 0, explode: 0, gridOp: 0.35 };
+let explodeTarget = 0; /* driven by the button on the interactive slide, or the exploded scene */
+const vis = { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
+const visT = { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
+const visDelay = { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
+let cur = SCENES.hidden, sceneTime = 0, dragTheta = 0, dragPhi = 0;
+let routeDraw = 0, cartT = 0, plugT = [0, 0, 0], penScale = 0, socketScale = 0;
+let gearScale = 0.001, coneScale = 0.001;
+const emScale = { cells: 0.001, cube: 0.001, rings: 0.001 };
+let wheelAngle = 0, gridOff = 0, carCircle = 0, departV = 0;
+
+const EXPLODE_POS = {
+  engine: new THREE.Vector3(-2.6, 2.1, 0),
+  chassis: new THREE.Vector3(0, 0.75, 0),
+  cabin: new THREE.Vector3(2.7, 1.75, 0)
+};
+const WHEEL_EXPLODE = [[1.9, 1.6], [1.9, -1.6], [-1.9, 1.6], [-1.9, -1.6]];
+
+function setScene(name) {
+  cur = SCENES[name] || SCENES.hidden;
+  sceneTime = 0;
+  P.engine.rotation.y = 0;
+  visT.engine = cur.parts.engine ? 1 : 0;
+  visT.chassis = cur.parts.chassis ? 1 : 0;
+  visT.cabin = cur.parts.cabin ? 1 : 0;
+  visT.wheels = cur.parts.wheels ? 1 : 0;
+  const d = cur.stagger ? { engine: 0, chassis: 0.25, cabin: 0.55, wheels: 0.4 } : { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
+  Object.keys(d).forEach(k => visDelay[k] = d[k]);
+  if (name === 'showcase' || name === 'exploded') { dragTheta = 0; dragPhi = 0; }
+  if (name === 'exploded') { explodeTarget = 1; }
+  else if (name === 'showcase') {
+    explodeTarget = 0; explodedOn = false;
+    orbitSlide.classList.remove('exploded');
+    const eb = $('#explodeBtn');
+    eb.textContent = 'باز شدن قطعات'; eb.classList.remove('on');
+  } else explodeTarget = 0;
+  if (name === 'plan') { routeDraw = 0; $('#approveChip').classList.add('show'); }
+  else $('#approveChip').classList.remove('show');
+  if (name === 'skill') cartT = 0;
+  if (name === 'mcp') { socketScale = 0.001; plugT = [0, 0, 0]; }
+  if (name === 'sandbox') penScale = 0.001;
+  if (name === 'leave') { departV = 0; car.position.set(7, 0, 4.5); }
+  if (name !== 'sandbox') carCircle = 0;
+}
+
+/* pointer orbit — only on the interactive slide */
+const orbitSlide = $('.s-orbit');
+let dragging = false, px = 0, py = 0;
+orbitSlide.addEventListener('pointerdown', e => {
+  if (e.target.closest('button')) return;
+  dragging = true; px = e.clientX; py = e.clientY;
+  orbitSlide.setPointerCapture(e.pointerId);
+  window.__orbitCapture = e.pointerType === 'touch';
+});
+orbitSlide.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  dragTheta -= (e.clientX - px) * 0.005;
+  dragPhi = Math.max(0.35, Math.min(1.45, dragPhi + (e.clientY - py) * 0.004));
+  px = e.clientX; py = e.clientY;
+});
+['pointerup', 'pointercancel'].forEach(ev => orbitSlide.addEventListener(ev, () => { dragging = false; window.__orbitCapture = false; }));
+
+/* explode toggle */
+let explodedOn = false;
+$('#explodeBtn').addEventListener('click', () => {
+  explodedOn = !explodedOn;
+  explodeTarget = explodedOn ? 1 : 0;
+  orbitSlide.classList.toggle('exploded', explodedOn);
+  $('#explodeBtn').textContent = explodedOn ? 'بستن قطعات' : 'باز شدن قطعات';
+  $('#explodeBtn').classList.toggle('on', explodedOn);
+});
+
+/* --- render loop --- */
+const easeOut = p => 1 - Math.pow(1 - p, 3);
+let last = performance.now(), tAcc = 0;
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; tAcc += dt; sceneTime += dt;
+  const k = 1 - Math.pow(0.0004, dt); /* smoothing toward scene targets */
+
+  st.carX += (cur.carX - st.carX) * k;
+  st.r += (cur.cam.r - st.r) * k;
+  st.theta += (cur.cam.theta - st.theta) * k;
+  st.phi += (cur.cam.phi - st.phi) * k;
+  st.ty += (cur.cam.ty - st.ty) * k;
+  st.lookX += ((cur.cam.lookX || 0) - st.lookX) * k;
+  st.explode += (explodeTarget - st.explode) * k;
+  st.gridOp += ((cur.gridOp || 0.4) - st.gridOp) * k;
+  gridA.material.opacity = gridB.material.opacity = st.gridOp;
+
+  if (cur.orbit && !dragging && !REDUCED) st.theta += dt * 0.1;
+  if (cur.orbitSlow && !dragging && !REDUCED) st.theta += dt * 0.05;
+
+  /* part presence (with optional stagger) + explode lerp */
+  [['engine', P.engine], ['chassis', P.chassis], ['cabin', P.cabin]].forEach(([kk, g]) => {
+    const target = sceneTime >= visDelay[kk] ? visT[kk] : 0;
+    vis[kk] += (target - vis[kk]) * (1 - Math.pow(0.00005, dt));
+    g.visible = vis[kk] > 0.02;
+    g.scale.setScalar(Math.max(0.001, vis[kk]));
+    const base = g.position.clone();
+    const exp = EXPLODE_POS[kk] || base;
+    g.position.lerpVectors(base, exp, st.explode);
+  });
+  P.wheels.forEach((w, i) => {
+    const target = sceneTime >= visDelay.wheels ? visT.wheels : 0;
+    vis.wheels = vis.wheels === undefined ? 0 : vis.wheels;
+    vis.wheels += (target - vis.wheels) * (1 - Math.pow(0.00005, dt));
+    w.visible = vis.wheels > 0.02;
+    w.scale.setScalar(Math.max(0.001, vis.wheels));
+    const bx = w.userData.bx, bz = w.userData.bz;
+    w.position.x = bx + (WHEEL_EXPLODE[i][0] - bx) * st.explode;
+    w.position.z = bz + (WHEEL_EXPLODE[i][1] - bz) * st.explode;
+    w.position.y = 0.45;
+  });
+
+  /* motion: wheels spin + steer-wiggle, grid scrolls, body bobs, headlights flicker */
+  if (cur.drive && !REDUCED) {
+    wheelAngle += dt * cur.drive * 8;
+    P.wheels.forEach(w => { w.rotation.z = -wheelAngle; w.rotation.y = Math.sin(tAcc * 2.6) * 0.07; });
+    gridOff = (gridOff + dt * cur.drive * 2.4) % 2.4;
+    gridA.position.x = gridOff; gridB.position.x = gridOff - 2.4;
+    car.position.y = Math.sin(tAcc * 11) * 0.03;
+    MAT.head.color.setHex(Math.sin(tAcc * 19) > 0.92 ? 0x9a9271 : 0xfff6c9);
+  } else {
+    car.position.y = 0;
+    MAT.head.color.setHex(0xfff6c9);
+    P.wheels.forEach(w => { w.rotation.y = 0; });
+  }
+
+  /* sandbox: slow circle inside the pen */
+  if (cur.circle && !REDUCED) {
+    carCircle += dt * 0.45;
+    car.position.x = Math.cos(carCircle) * 1.7;
+    car.position.z = Math.sin(carCircle) * 1.7;
+    car.rotation.y = Math.atan2(Math.cos(carCircle), Math.sin(carCircle));
+  } else if (cur.depart) {
+    /* drive away from the camera, into the fog */
+    departV = Math.min(9, departV + dt * 4);
+    car.position.x += 0.64 * departV * dt;
+    car.position.z += -0.77 * departV * dt;
+    car.rotation.y += (-2.26 - car.rotation.y) * k;
+    P.headlights.forEach(h => h.scale.setScalar(1.6));
+  } else {
+    car.position.x = st.carX; car.position.z = 0; car.rotation.y = 0;
+  }
+
+  /* engine idles with a slow spin in the close-up scene */
+  if (cur.spin && !REDUCED) P.engine.rotation.y += dt * 0.35;
+
+  /* plan-mode route draw — the route rides with the car */
+  EX.route.position.x = st.carX; EX.ring.position.x = st.carX - 5.1;
+  if (cur.fx && cur.fx.route) {
+    routeDraw = Math.min(1, routeDraw + dt * 0.75);
+    EX.route.geometry.setDrawRange(0, Math.floor(routeDraw * 61));
+    EX.ring.scale.setScalar(routeDraw > 0.9 ? Math.min(1, (routeDraw - 0.9) * 10) : 0.001);
+  } else { EX.route.geometry.setDrawRange(0, 0); EX.ring.scale.setScalar(0.001); }
+
+  /* skill cartridge docks on the cabin roof; rides with it when exploded */
+  if (cur.fx && cur.fx.cartridge) {
+    cartT = Math.min(1, cartT + dt * 0.6);
+    const p = easeOut(cartT);
+    EX.cartridge.position.set(st.carX + 0.35 + st.explode * 1.65 - (1 - p) * 5.7, (4.6 - p * 2.45) + st.explode * 0.5, 2.2 - p * 2.2);
+    EX.cartridge.rotation.z = (1 - p) * 0.9;
+    EX.cartridge.scale.setScalar(0.001 + p);
+  } else EX.cartridge.scale.setScalar(0.001);
+
+  /* MCP socket on the nose + plugs docking from the front */
+  socketScale += ((cur.fx && cur.fx.socket ? 1 : 0.001) - socketScale) * k;
+  EX.socket.visible = socketScale > 0.02;
+  EX.socket.scale.setScalar(Math.max(0.001, socketScale));
+  EX.socket.position.set(st.carX - 2.31, 0.78, 0);
+  if (cur.fx && cur.fx.plugs) {
+    plugT = plugT.map((t, i) => Math.min(1, t + dt * 0.55 * (sceneTime > 0.4 + i * 0.45 ? 1 : 0)));
+    EX.plugs.forEach((g, i) => {
+      const p = easeOut(plugT[i]);
+      g.visible = p > 0.01;
+      g.position.set(st.carX - 8 + i * 0.4 + p * (5.4 - i * 0.4), 0.92 - i * 0.14, 0);
+    });
+  } else EX.plugs.forEach(g => { g.visible = false; });
+
+  /* sandbox pen pop */
+  penScale += ((cur.fx && cur.fx.pen ? 1 : 0.001) - penScale) * k;
+  EX.pen.visible = penScale > 0.02;
+  EX.pen.scale.setScalar(Math.max(0.001, penScale));
+
+  /* gear halo on the engine slides */
+  gearScale += ((cur.fx && cur.fx.gear ? 1 : 0.001) - gearScale) * k;
+  EX.gear.visible = gearScale > 0.02;
+  EX.gear.scale.setScalar(Math.max(0.001, gearScale));
+  EX.gear.position.set(st.carX - 1.55, 0.85 + Math.sin(tAcc * 1.4) * 0.06, 0);
+  if (!REDUCED) EX.gear.rotation.z += dt * 0.8;
+
+  /* sandbox cones */
+  coneScale += ((cur.fx && cur.fx.cones ? 1 : 0.001) - coneScale) * k;
+  EX.cones.visible = coneScale > 0.02;
+  EX.cones.scale.setScalar(Math.max(0.001, coneScale));
+
+  /* project emblems: one takes the stage per project slide */
+  const em = cur.fx && cur.fx.emblem;
+  ['cells', 'cube', 'rings'].forEach(nm => {
+    emScale[nm] += ((em === nm ? 1 : 0.001) - emScale[nm]) * k;
+    const g = EX[nm];
+    g.visible = emScale[nm] > 0.02;
+    g.scale.setScalar(Math.max(0.001, emScale[nm]));
+  });
+  if (!REDUCED) {
+    if (em === 'cells') EX.cells.rotation.y += dt * 0.35;
+    if (em === 'cube') { EX.cube.rotation.y += dt * 0.4; EX.cube.rotation.x += dt * 0.17; }
+    if (em === 'rings') EX.rings.children.forEach((r, i) => r.scale.setScalar(1 + Math.sin(tAcc * 3 - i * 0.9) * 0.1));
+  }
+
+  /* camera: spherical orbit around a low target */
+  const th = st.theta + dragTheta, ph = Math.max(0.3, Math.min(1.5, st.phi + dragPhi));
+  camera.position.set(Math.sin(th) * Math.cos(ph) * st.r, st.ty + Math.sin(ph) * st.r * 0.55, Math.cos(th) * Math.cos(ph) * st.r);
+  camera.lookAt(st.lookX, st.ty, 0);
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* ===========================================
+   5. SIMULATIONS — deterministic, offline.
+   The agent panel speaks Farsi; the terminal stays LTR.
+   =========================================== */
+const SCRIPTS = {
+  bug: { steps: [
+    { t: 'برنامه‌ریزی', th: 'تست شکسته را می‌بینم. احتمالاً کش. نقشه: بخوان، وصله کن، تست بگیر.', k: 'STEP 1 / 5', term: [['cmd', 'plan --goal "fix failing test"'], ['out', '1. read failing test'], ['out', '2. locate bug in src/api.js'], ['out', '3. patch + re-run tests']] },
+    { t: 'خواندن کد', th: 'خط ۴۴: نتیجهٔ کش await نشده — همین باگ است.', k: 'STEP 2 / 5', term: [['cmd', 'sed -n "40,48p" src/api.js'], ['out', '40   async function get(key) {'], ['out', '41     const v = cache.get(key)'], ['del', '-   42     return v']] },
+    { t: 'ویرایش', th: 'یک await جا افتاده. فقط همین.', k: 'STEP 3 / 5', term: [['cmd', 'edit src/api.js'], ['add', '+   return await cache.get(key)']] },
+    { t: 'اجرای تست', th: 'دوباره تست — باید سبز شود.', k: 'STEP 4 / 5', term: [['cmd', 'pytest -q'], ['out', '............'], ['ok', '12 passed in 1.8s']] },
+    { t: 'تأیید', th: 'تمیز شد. کامیت و تمام.', k: 'STEP 5 / 5', term: [['cmd', 'git commit -m "fix: await cache lookup"'], ['ok', '[ok] PR #42 ready for review']] }
+  ] },
+  feature: { steps: [
+    { t: 'برنامه‌ریزی', th: 'محدودسازی نرخ می‌خواهی؟ اول طرح، بعد کد.', k: 'STEP 1 / 5', term: [['cmd', 'plan --goal "add rate limiting"'], ['out', '1. scaffold src/rate-limit.js'], ['out', '2. implement token bucket'], ['out', '3. wire into app + test']] },
+    { t: 'اسکلت', th: 'فایل تازه، کلاس TokenBucket.', k: 'STEP 2 / 5', term: [['cmd', 'new src/rate-limit.js'], ['out', 'class TokenBucket { ... }'], ['out', 'export default TokenBucket']] },
+    { t: 'پیاده‌سازی', th: 'وصل کردن به app، دو خط.', k: 'STEP 3 / 5', term: [['cmd', 'edit src/api.js'], ['add', '+ import rateLimit from "./rate-limit.js"'], ['add', '+ app.use(rateLimit({ rpm: 120 }))']] },
+    { t: 'اجرای تست', th: 'تست‌های تازه هم نوشتم.', k: 'STEP 4 / 5', term: [['cmd', 'npm test'], ['ok', '34 passed, 2 new']] },
+    { t: 'تحویل', th: 'پشت پرچم آمادهٔ فعال‌سازی.', k: 'STEP 5 / 5', term: [['cmd', 'git commit -m "feat: rate limiting"'], ['ok', '[ok] shipped behind a flag']] }
+  ] },
+  tests: { steps: [
+    { t: 'برنامه‌ریزی', th: 'پوشش پایین است. از بی‌تست‌ترین ماژول شروع می‌کنم.', k: 'STEP 1 / 5', term: [['cmd', 'plan --goal "raise coverage"'], ['out', '1. list untested modules'], ['out', '2. write unit tests'], ['out', '3. measure again']] },
+    { t: 'تحلیل', th: 'strings.js ضعیف‌ترین است.', k: 'STEP 2 / 5', term: [['cmd', 'npm run cover -- --summary'], ['out', 'math.js     61%'], ['out', 'strings.js  47%']] },
+    { t: 'نوشتن تست', th: 'دوازده حالت، مرزها و خطاها.', k: 'STEP 3 / 5', term: [['cmd', 'new test/strings.test.js'], ['out', 'describe("slugify", ...)'], ['out', '12 cases written']] },
+    { t: 'اجرا', th: 'همه سبز.', k: 'STEP 4 / 5', term: [['cmd', 'npm test'], ['ok', '46 passed, 0 failed']] },
+    { t: 'نتیجه', th: 'پوشش دو برابر شد.', k: 'STEP 5 / 5', term: [['cmd', 'npm run cover -- --summary'], ['ok', 'coverage 47% → 84%']] }
+  ] }
+};
+
+class SimRunner {
+  constructor(panel, termEl) {
+    this.panel = panel; this.term = termEl;
+    this.pipsBox = panel.querySelector('.pips');
+    this.runId = 0; this.paused = false; this.stepIdx = -1; this.script = null; this.stepStart = 0;
+  }
+  load(script) {
+    this.stop(); this.script = script;
+    this.pipsBox.innerHTML = script.steps.map(() => '<i></i>').join('');
+    this.term.innerHTML = '<div class="ln out">agent ready — playing…</div>';
+    this.stepIdx = -1; this.paused = false;
+    this.play();
+  }
+  clear() {
+    this.stop(); this.script = null; this.stepIdx = -1;
+    this.term.innerHTML = '<div class="ln out">agent idle.</div>';
+    this.panel.querySelector('.step-k').textContent = 'STEP — / —';
+    this.panel.querySelector('.step-t').textContent = 'منتظر فرمان';
+    this.panel.querySelector('.thought').textContent = 'یکی از کارها را انتخاب کنید.';
+    this.pipsBox.innerHTML = '';
+  }
+  stop() { this.runId++; }
+  play() {
+    if (!this.script) return;
+    this.paused = false;
+    if (this.stepIdx < 0) return this.next();
+    /* re-type the current step from a clean slate */
+    this.runId++;
+    [...this.term.children].slice(this.stepStart).forEach(n => n.remove());
+    this.resume();
+  }
+  pause() { this.paused = true; this.runId++; }
+  resume() {
+    if (!this.script || this.paused) return;
+    const id = this.runId, i = this.stepIdx, step = this.script.steps[i];
+    if (!step) return;
+    step.term.forEach(([cls, txt], li) => {
+      setTimeout(() => {
+        if (id !== this.runId || this.paused) return;
+        const div = document.createElement('div');
+        div.className = 'ln ' + cls; div.textContent = txt;
+        this.term.appendChild(div);
+        if (li === step.term.length - 1) {
+          this.pipsBox.children[i] && this.pipsBox.children[i].classList.add('done');
+          if (i === this.script.steps.length - 1) {
+            const done = document.createElement('div'); done.className = 'ln out';
+            done.innerHTML = 'done. <span class="tcur"></span>';
+            this.term.appendChild(done);
+          } else setTimeout(() => { if (id === this.runId && !this.paused) this.next(); }, 900);
+        }
+      }, 340 * (li + 1));
+    });
+  }
+  next() {
+    if (!this.script) return;
+    this.runId++; this.paused = false;
+    this.stepIdx++;
+    const step = this.script.steps[this.stepIdx];
+    if (!step) return;
+    this.stepStart = this.term.children.length;
+    this.panel.querySelector('.step-k').textContent = step.k;
+    this.panel.querySelector('.step-t').textContent = step.t;
+    this.panel.querySelector('.thought').textContent = step.th;
+    this.resume();
+  }
+  reset() { if (this.script) this.load(this.script); }
+}
+
+/* slide 7 uses the first panel/terminal, slide 8 the second */
+const panels = $$('.agent-panel');
+const sim = new SimRunner(panels[0], $('#simTerm'));
+const taskRunner = new SimRunner(panels[1], $('#taskTerm'));
+taskRunner.clear();
+
+$('#simPlay').addEventListener('click', () => sim.play());
+$('#simPause').addEventListener('click', () => sim.pause());
+$('#simStepBtn').addEventListener('click', () => sim.next());
+$('#simReset').addEventListener('click', () => sim.reset());
+$$('.task').forEach(b => b.addEventListener('click', () => {
+  $$('.task').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  taskRunner.load(SCRIPTS[b.dataset.task]);
+}));
+
+/* ===========================================
+   6. PROJECT QR CODES — rendered offline,
+   no network. CALC_URL fills the 4th slot once
+   the troll calculator is deployed.
+   =========================================== */
+const CALC_URL = ''; /* deploy troll-calculator/, paste its URL here */
+const QR_TARGETS = [
+  ['qr1', 'https://huehunch.vercel.app'],
+  ['qr2', 'https://neon-arena-r5zh.vercel.app'],
+  ['qr3', 'https://raid-night.vercel.app']
+];
+if (CALC_URL) QR_TARGETS.push(['qr4', CALC_URL]);
+QR_TARGETS.forEach(([id, url]) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+  } catch (e) { el.textContent = 'QR'; }
+});
+const calcSlot = document.getElementById('qr4');
+if (calcSlot && !calcSlot.firstChild) calcSlot.innerHTML = '<div class="soon">به‌زودی</div>';
+
+/* ===========================================
+   TOKEN SLIDE — the sentence snaps into chunks,
+   counter ticks up; replays on every entry.
+   =========================================== */
+const TOKEN_ROWS = [
+  [['I', 0], [' love', 1], [' agen', 0], ['ts', 1], [' —', 0], [' they', 1], [' fix', 0], [' bugs', 1]],
+  [['ماشین', 1], [' حساب', 0], [' خوب', 1]]
+];
+let tokRun = 0;
+function tokenPlay() {
+  const stage = document.getElementById('tokstage');
+  if (!stage) return;
+  const id = ++tokRun;
+  stage.innerHTML = '';
+  const count = document.getElementById('tokN');
+  let n = 0, delay = 320;
+  TOKEN_ROWS.forEach(row => row.forEach(([txt, alt]) => {
+    const s = document.createElement('span');
+    s.className = 'tok' + (alt ? ' alt' : '');
+    s.textContent = txt;
+    stage.appendChild(s);
+    setTimeout(() => {
+      if (id !== tokRun) return;
+      s.classList.add('on');
+      n++;
+      count.textContent = fa(n);
+    }, delay);
+    delay += 360;
+  }));
+}
+
+/* ===========================================
+   BOOT — deep link (?slide=N), scene wiring
+   The slidechange listener MUST bind before the
+   Presentation constructor fires the first event,
+   or the initial slide never gets its 3D scene.
+   =========================================== */
+const params = new URLSearchParams(location.search);
+const totalSlides = $$('.slide').length;
+const startIdx = Math.max(0, Math.min(parseInt(params.get('slide') || '1', 10) - 1, totalSlides - 1));
+let pres;
+document.addEventListener('slidechange', e => {
+  const slide = e.detail.slide;
+  setScene(slide.dataset.scene || 'hidden');
+  if (e.detail.index === 7) setTimeout(() => { if (pres.i === 7) sim.load(SCRIPTS.bug); }, 900);
+  if (e.detail.index !== 7) sim.stop();
+  if (e.detail.index !== 8) taskRunner.pause();
+  if (e.detail.index === 12) tokenPlay();
+});
+pres = new Presentation(startIdx);
+/* deep-link the exploded state: ?slide=7&explode=1 */
+if (params.get('explode') === '1') setTimeout(() => { if (pres.i === 6) $('#explodeBtn').click(); }, 1400);
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

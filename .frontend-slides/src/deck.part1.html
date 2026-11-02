@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>هرنس — از مدل زبانی تا ایجنت</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Lalezar&family=Vazirmatn:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ===========================================
+   CSS CUSTOM PROPERTIES — STUDIO × BLUEPRINT
+   Binary palette: near-black field, acid type.
+   The drafting grid is the same acid, faint.
+   =========================================== */
+:root {
+  --bg: #1C1C1C;
+  --acid: #F5D200;
+  --acid-60: rgba(245, 210, 0, 0.6);
+  --acid-38: rgba(245, 210, 0, 0.38);
+  --acid-16: rgba(245, 210, 0, 0.16);
+  --acid-08: rgba(245, 210, 0, 0.08);
+  --ink-dark: #1C1C1C;
+  --font-display: 'Lalezar', 'Vazirmatn', sans-serif;
+  --font-body: 'Vazirmatn', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --slide-padding: 84px 104px;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-normal: 0.7s;
+  --stage-bg: #1C1C1C;
+  --slide-bg: transparent;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ===========================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES
+   =========================================== */
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--stage-bg, #000); }
+.deck-viewport { position: fixed; inset: 0; overflow: hidden; background: var(--stage-bg, #000); }
+.deck-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; transform-origin: 0 0; background: var(--slide-bg, #fff); }
+.slide { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; display: block; visibility: hidden; opacity: 0; pointer-events: none; background: var(--slide-bg, #fff); }
+.slide.active, .slide.visible { visibility: visible; opacity: 1; pointer-events: auto; z-index: 1; }
+img, video, canvas, svg { max-width: 100%; max-height: 100%; }
+.deck-controls { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 1000; }
+@media print {
+  html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+  .deck-viewport { position: static; overflow: visible; background: #fff; }
+  .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+  .slide { position: relative; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; width: 1920px; height: 1080px; break-after: page; page-break-after: always; }
+  .slide:last-child { break-after: auto; page-break-after: auto; }
+  .deck-controls { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.2s !important; } }
+
+/* ===========================================
+   WORLD: THE DRAFTING SHEET
+   Grid + corner registration crosses live on the
+   stage (behind every slide), not per slide.
+   =========================================== */
+.deck-stage {
+  background-image: linear-gradient(var(--acid-08) 1px, transparent 1px), linear-gradient(90deg, var(--acid-08) 1px, transparent 1px);
+  background-size: 80px 80px;
+  background-position: center;
+}
+.reg { position: absolute; width: 30px; height: 30px; z-index: 3; pointer-events: none; }
+.reg::before, .reg::after { content: ''; position: absolute; background: var(--acid-38); }
+.reg::before { left: 50%; top: 0; width: 1px; height: 100%; }
+.reg::after { top: 50%; left: 0; height: 1px; width: 100%; }
+.reg.tl { top: 30px; right: 30px; } .reg.tr { top: 30px; left: 30px; }
+.reg.bl { bottom: 30px; right: 30px; } .reg.br { bottom: 30px; left: 30px; }
+
+/* 3D canvas lives in stage space so it scales with the sheet */
+canvas.gl { position: absolute; inset: 0; width: 1920px; height: 1080px; z-index: 1; }
+.slide { z-index: 2; }
+
+/* ===========================================
+   TYPE & SHARED PARTS
+   =========================================== */
+body { font-family: var(--font-body); color: var(--acid); }
+::selection { background: var(--acid); color: var(--ink-dark); }
+.en { direction: ltr; unicode-bidi: isolate; font-family: var(--font-mono); }
+
+.sc { position: absolute; inset: 0; padding: var(--slide-padding); display: flex; flex-direction: column; z-index: 2; }
+.sc.right { align-items: flex-start; max-width: 46%; inset-inline-start: 0; }
+.sc.center { align-items: center; justify-content: center; text-align: center; }
+
+h1, h2 { font-family: var(--font-display); font-weight: 400; color: var(--acid); }
+.h-mega { font-size: 380px; line-height: 0.8; }
+.h-big { font-size: 128px; line-height: 1.02; }
+.lead { font-size: 46px; font-weight: 700; margin-top: 28px; }
+.sub { font-size: 31px; font-weight: 400; margin-top: 20px; color: var(--acid-60); line-height: 1.65; max-width: 30ch; }
+.punch { font-size: 36px; font-weight: 800; margin-top: 44px; border-top: 2px solid var(--acid-38); padding-top: 26px; max-width: 26ch; }
+
+/* drafting title block (slide 1) */
+.tblock { border: 1px solid var(--acid-38); display: grid; grid-template-columns: 118px 1fr; width: 480px; }
+.tblock > div { padding: 13px 22px; border-top: 1px solid var(--acid-38); font-size: 22px; }
+.tblock > div:nth-child(-n+2) { border-top: 0; }
+.tblock .k { color: var(--acid-60); border-inline-start: 1px solid var(--acid-38); }
+.tblock .v { font-weight: 500; }
+
+/* drafting callout: dot + leader line + label */
+.co { position: absolute; display: flex; align-items: center; gap: 0; z-index: 3; opacity: 0; transform: translateY(8px); transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo); }
+.slide.visible .co { opacity: 1; transform: none; }
+.co .dot { width: 10px; height: 10px; background: var(--acid); flex: none; }
+.co .ln { width: 84px; height: 1px; background: var(--acid-38); flex: none; }
+.co .tx { font-size: 25px; font-weight: 600; white-space: nowrap; padding: 0 14px; }
+.co .tx small { display: block; font-family: var(--font-mono); font-size: 15px; color: var(--acid-60); direction: ltr; text-align: right; }
+.co.delay-1 { transition-delay: 0.25s; } .co.delay-2 { transition-delay: 0.5s; } .co.delay-3 { transition-delay: 0.75s; }
+/* reversed callout: dot on the left edge, label extends right */
+.co.rev { flex-direction: row-reverse; }
+.co.rev .tx small { text-align: left; }
+
+/* buttons — square, binary */
+.btn { font-family: var(--font-body); font-size: 26px; font-weight: 700; color: var(--acid); background: transparent; border: 2px solid var(--acid); padding: 16px 38px; cursor: pointer; transition: background 0.25s ease, color 0.25s ease; }
+.btn:hover { background: var(--acid); color: var(--ink-dark); }
+.btn:focus-visible, button:focus-visible { outline: 2px dashed var(--acid-60); outline-offset: 3px; }
+.btn.small { font-size: 21px; padding: 10px 24px; }
+.btn.on { background: var(--acid); color: var(--ink-dark); }
+
+.chip { display: inline-block; font-size: 20px; font-weight: 600; border: 1px solid var(--acid-38); padding: 8px 18px; color: var(--acid-60); }
+
+/* ===========================================
+   REVEAL — one orchestrated entrance per slide
+   =========================================== */
+.reveal { opacity: 0; transform: translateY(30px); transition: opacity var(--duration-normal) var(--ease-out-expo), transform var(--duration-normal) var(--ease-out-expo); }
+.slide.visible .reveal { opacity: 1; transform: translateY(0); }
+.slide.visible .d1 { transition-delay: 0.15s; }
+.slide.visible .d2 { transition-delay: 0.3s; }
+.slide.visible .d3 { transition-delay: 0.45s; }
+.slide.visible .d4 { transition-delay: 0.6s; }
+
+/* ===========================================
+   SLIDE 1 — TITLE: type as graphic mass
+   =========================================== */
+.s-title .t-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 24px; font-weight: 500; }
+.s-title .t-meta .en { font-size: 20px; letter-spacing: 0.08em; color: var(--acid-60); }
+.s-title .t-mass { flex: 1; display: flex; align-items: flex-end; overflow: hidden; }
+.s-title h1 { font-size: 320px; line-height: 0.86; margin: 0; }
+.s-title .t-block-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 40px; padding-bottom: 8px; }
+.s-title .t-band { background: var(--acid); color: var(--ink-dark); padding: 24px 40px 28px; flex: 1; display: flex; justify-content: space-between; align-items: baseline; }
+.s-title .t-band .fa { font-size: 50px; font-weight: 800; }
+.s-title .t-band .en { font-size: 20px; font-weight: 700; }
+.s-title .slide.visible h1 { transition-delay: 0.1s; }
+
+/* ===========================================
+   SLIDE 5 — AGENT LOOP + DIFF
+   =========================================== */
+.loop { display: flex; align-items: center; gap: 22px; margin-top: 44px; flex-wrap: nowrap; }
+.loop span { border: 2px solid var(--acid); padding: 16px 30px; font-size: 29px; font-weight: 700; white-space: nowrap; }
+.loop span:not(:last-child)::after { content: '←'; margin-inline-start: 22px; color: var(--acid-60); font-weight: 400; }
+.diff { border-collapse: collapse; margin-top: 48px; width: 100%; }
+.diff td { border: 1px solid var(--acid-16); padding: 16px 24px; font-size: 27px; }
+.diff td.ro { font-family: var(--font-mono); direction: ltr; text-align: left; font-size: 21px; font-weight: 700; white-space: nowrap; color: var(--acid-60); }
+.diff tr:first-child td { border-top: 2px solid var(--acid-38); }
+
+/* ===========================================
+   SLIDE 6 — EXPLODE LABELS appear with the exploded state
+   =========================================== */
+.slide.s-orbit .co { opacity: 0; pointer-events: none; }
+.slide.s-orbit.exploded .co { opacity: 1; pointer-events: auto; }
+.slide.s-orbit.exploded .co.delay-1 { transition-delay: 0.2s; }
+.slide.s-orbit.exploded .co.delay-2 { transition-delay: 0.4s; }
+.s-orbit { cursor: grab; }
+.s-orbit:active { cursor: grabbing; }
+.hint { font-size: 27px; color: var(--acid-60); margin-top: 22px; }
+
+/* ===========================================
+   SLIDES 8–9 — SIMULATION (cinematic, borderless)
+   =========================================== */
+.simhead2 { display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+.cine { display: flex; gap: 56px; margin-top: 44px; flex: 1; min-height: 0; }
+.agent-panel { width: 480px; display: flex; flex-direction: column; gap: 18px; }
+.agent-panel .step-k { font-family: var(--font-mono); direction: ltr; text-align: right; font-size: 17px; color: var(--acid-60); }
+.agent-panel .step-t { font-family: var(--font-display); font-size: 58px; font-weight: 400; line-height: 1.1; }
+.agent-panel .thought { font-size: 24px; line-height: 1.7; color: var(--acid-60); border-inline-start: 3px solid var(--acid-38); padding-inline-start: 18px; }
+.pips { display: flex; gap: 10px; }
+.pips i { width: 16px; height: 16px; border: 1px solid var(--acid-38); transition: background 0.3s ease; }
+.pips i.done { background: var(--acid); }
+.cine .terminal { flex: 1; font-family: var(--font-mono); font-size: 24px; line-height: 1.8; direction: ltr; text-align: left; overflow: hidden; }
+.terminal .ln { white-space: pre-wrap; word-break: break-all; }
+.terminal .cmd { color: var(--acid); }
+.terminal .cmd::before { content: '$ '; color: var(--acid-60); }
+.terminal .out { color: var(--acid-60); }
+.terminal .ok { color: var(--acid); font-weight: 700; }
+.terminal .del { color: var(--acid-38); text-decoration: line-through; }
+.terminal .add { color: var(--acid); font-weight: 700; }
+.terminal .tcur { display: inline-block; width: 12px; height: 24px; background: var(--acid); vertical-align: -3px; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.sim-ctl { display: flex; flex-direction: column; align-items: stretch; gap: 14px; margin-top: 10px; }
+.tasks { display: flex; gap: 22px; margin-top: 34px; flex-wrap: wrap; }
+.tasks .btn { font-size: 30px; padding: 18px 44px; }
+
+/* ===========================================
+   TOKEN SLIDE — live tokenization
+   =========================================== */
+.tokstage { direction: ltr; display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin: 44px 0 26px; min-height: 120px; }
+.tok { display: inline-block; border: 2px solid var(--acid); padding: 10px 18px; font-family: var(--font-mono); font-size: 32px; color: var(--acid); opacity: 0; transform: translateY(16px) scale(0.9); transition: opacity 0.45s var(--ease-out-expo), transform 0.45s var(--ease-out-expo); }
+.tok.alt { background: var(--acid); color: var(--ink-dark); }
+.tok.on { opacity: 1; transform: none; }
+.tokcount { font-family: var(--font-mono); font-size: 30px; color: var(--acid-60); text-align: center; margin-bottom: 26px; }
+.tokcount b { color: var(--acid); font-size: 38px; }
+
+/* ===========================================
+   MODELS SLIDE — tiers & training
+   =========================================== */
+.models { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; margin-top: 40px; }
+.tiers { display: grid; gap: 10px; align-content: start; }
+.tier { display: grid; grid-template-columns: 170px 1fr; gap: 18px; align-items: center; margin-top: 14px; }
+.tier .tk { font-family: var(--font-mono); font-size: 20px; font-weight: 700; direction: ltr; text-align: right; color: var(--acid); }
+.tier .tb { height: 42px; background: var(--acid); }
+.td { font-size: 21px; color: var(--acid-60); margin: 0; }
+.tiers .td { margin-top: -4px; }
+.training { display: grid; align-content: start; }
+.tstep { display: grid; grid-template-columns: 46px 1fr; gap: 18px; padding: 15px 0; border-bottom: 1px solid var(--acid-16); }
+.tstep .n { font-family: var(--font-mono); font-size: 22px; color: var(--acid); border: 1px solid var(--acid-38); width: 46px; height: 46px; display: grid; place-items: center; }
+.tstep .tt { font-size: 25px; font-weight: 800; color: var(--acid); }
+.tstep .td { margin-top: 4px; grid-column: 2; }
+
+/* ===========================================
+   PROMPT SLIDES — the ask, then بدون/با panels
+   =========================================== */
+.prompt-line { font-size: 38px; font-weight: 800; border: 2px solid var(--acid-38); padding: 20px 30px; display: inline-block; margin-top: 30px; }
+.prompt-line .en { font-family: var(--font-mono); font-size: 28px; color: var(--acid-60); margin-inline-end: 14px; }
+.vs { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 40px; }
+.vs .panel { padding: 26px 30px; min-height: 290px; }
+.vs .panel .k { display: block; font-size: 27px; font-weight: 800; margin-bottom: 16px; }
+.vs .panel p { font-size: 25px; line-height: 1.75; color: var(--acid-60); }
+.vs .without { border: 2px dashed var(--acid-38); }
+.vs .without .k { color: var(--acid-60); }
+.vs .with { border: 2px solid var(--acid); background: var(--acid-08); }
+
+/* ===========================================
+   PROJECT SLIDES — QR + link
+   =========================================== */
+.qr-row { display: flex; gap: 56px; align-items: center; margin-top: 40px; }
+.qr { width: 380px; height: 380px; background: var(--acid); padding: 14px; flex: none; }
+.qr svg { width: 100%; height: 100%; display: block; }
+.qr .soon { display: grid; place-items: center; height: 100%; font-family: var(--font-display); font-size: 44px; color: var(--ink-dark); }
+.qr-meta { display: flex; flex-direction: column; gap: 18px; }
+.qr-meta .en { font-size: 26px; font-weight: 700; }
+.qr-meta .qr-hint { font-size: 24px; color: var(--acid-60); max-width: 24ch; line-height: 1.8; }
+
+/* ===========================================
+   CONCEPT CHARTS, MINI TABLES, DRAFTING STAMPS
+   =========================================== */
+.bars { margin-top: 44px; width: 560px; display: grid; gap: 18px; }
+.bar-row { display: grid; grid-template-columns: 90px 1fr 70px; align-items: center; gap: 16px; }
+.bar-k { font-size: 26px; font-weight: 700; }
+.bar-t { height: 34px; border: 1px solid var(--acid-16); background: var(--acid-08); position: relative; }
+.bar-t i { position: absolute; inset-inline-start: 0; top: 0; bottom: 0; width: 0; background: var(--acid); transition: width 1.2s var(--ease-out-expo) 0.5s; }
+.slide.visible .bar-t i { width: var(--w); }
+.bar-v { font-family: var(--font-mono); font-size: 20px; color: var(--acid-60); direction: ltr; text-align: left; }
+
+.loopring { position: absolute; top: 56px; left: 64px; width: 300px; height: 300px; }
+.loopring svg { width: 100%; height: 100%; display: block; }
+.lr-ring { fill: none; stroke: var(--acid-16); stroke-width: 12; }
+.lr-marker { fill: none; stroke: var(--acid); stroke-width: 5; stroke-dasharray: 70 621; transform-origin: 150px 150px; animation: lrorbit 7s linear infinite; }
+.loopring text { fill: var(--acid-60); font-family: var(--font-body); font-size: 21px; font-weight: 700; text-anchor: middle; }
+@keyframes lrorbit { to { transform: rotate(360deg); } }
+
+.mini { margin-top: 30px; border-collapse: collapse; width: 100%; }
+.mini td { border: 1px solid var(--acid-16); padding: 12px 20px; font-size: 23px; color: var(--acid-60); }
+.mini td:first-child { font-weight: 800; color: var(--acid); border-inline-end: 2px solid var(--acid-38); }
+
+.stamp { position: absolute; border: 1px solid var(--acid-38); padding: 10px 18px; font-size: 20px; color: var(--acid-60); }
+.stamp b { color: var(--acid); font-weight: 800; }
+.stamp .en { font-size: 17px; }
+
+/* ===========================================
+   PROMPT PAIR / CONTEXT WINDOW / TOOL INTERFACE
+   =========================================== */
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 34px; }
+.pcol { border: 2px solid var(--acid); padding: 20px 24px; background: var(--acid-08); }
+.pcol.without { border-color: var(--acid-38); border-style: dashed; background: transparent; }
+.pk { display: block; font-size: 21px; font-weight: 800; margin-bottom: 12px; }
+.pk .en { font-size: 15px; color: var(--acid-60); margin-inline-start: 10px; }
+.pcol.without .pk { color: var(--acid-60); }
+.ex { font-family: var(--font-mono); direction: ltr; text-align: left; font-size: 17px; line-height: 1.55; white-space: pre-wrap; color: var(--acid); margin: 0 0 12px; }
+.pcol.without .ex { color: var(--acid-60); }
+.po { font-size: 21px; font-weight: 700; color: var(--acid-60); margin: 0; }
+
+.ctxframe { direction: ltr; border: 2px dashed var(--acid-38); padding: 16px 18px 0; width: 620px; height: 452px; position: relative; overflow: hidden; margin-top: 30px; }
+.ctx-block { font-family: var(--font-mono); font-size: 19px; background: var(--acid-08); border: 1px solid var(--acid-16); padding: 11px 18px; margin-bottom: 10px; color: var(--acid); }
+.ctx-block.dim { color: var(--acid-60); }
+.ctx-limit { position: absolute; bottom: 6px; left: 18px; font-family: var(--font-mono); font-size: 15px; color: var(--acid-60); }
+
+.tooldef { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; margin-top: 36px; align-items: start; }
+.tooldef pre { font-family: var(--font-mono); direction: ltr; text-align: left; font-size: 22px; line-height: 1.7; border: 2px solid var(--acid-38); padding: 26px 30px; background: rgba(0, 0, 0, 0.35); color: var(--acid); margin: 0; }
+.tanno { display: grid; gap: 20px; }
+.tanno .ta { font-size: 23px; line-height: 1.6; color: var(--acid-60); }
+.tanno .ta b { color: var(--acid); font-family: var(--font-mono); font-size: 19px; direction: ltr; unicode-bidi: isolate; }
+
+/* ===========================================
+   SLIDE 11 — ROUTE APPROVAL chip
+   =========================================== */
+.approve { position: absolute; bottom: 120px; inset-inline-start: 104px; border: 2px solid var(--acid); background: var(--bg); padding: 18px 34px; font-size: 27px; font-weight: 800; opacity: 0; transform: translateY(14px); transition: opacity 0.5s var(--ease-out-expo), transform 0.5s var(--ease-out-expo); z-index: 3; }
+.approve.show { opacity: 1; transform: none; transition-delay: 1.4s; }
+
+/* ===========================================
+   SLIDE 14 — REVEAL
+   =========================================== */
+.s-reveal h1 { font-size: 150px; line-height: 1.1; }
+.s-reveal .lead { margin-top: 34px; }
+
+/* ===========================================
+   DECK CHROME (outside the stage)
+   =========================================== */
+.progress { position: fixed; top: 0; inset-inline-start: 0; height: 3px; width: 100%; z-index: 1001; background: var(--acid-16); }
+.progress i { display: block; height: 100%; background: var(--acid); transform-origin: right center; transition: transform 0.5s var(--ease-out-expo); }
+.deck-controls { display: flex; align-items: center; gap: 18px; background: var(--bg); border: 1px solid var(--acid-16); padding: 10px 16px; }
+.deck-controls button { background: transparent; border: 1px solid var(--acid-38); color: var(--acid); width: 46px; height: 46px; cursor: pointer; display: grid; place-items: center; transition: background 0.25s ease, color 0.25s ease; }
+.deck-controls button:hover { background: var(--acid); color: var(--ink-dark); }
+.deck-controls button svg { display: block; }
+.deck-controls .count { font-size: 20px; font-weight: 600; min-width: 96px; text-align: center; }
+.deck-controls .simhint { font-size: 17px; color: var(--acid-60); }
+
+/* ===========================================
+   INLINE EDITING
+   =========================================== */
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle { position: fixed; top: 14px; left: 14px; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; z-index: 10001; background: var(--bg); border: 2px solid var(--acid); color: var(--acid); font-size: 26px; width: 58px; height: 58px; cursor: pointer; }
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+.edit-toggle.active { background: var(--acid); color: var(--ink-dark); }
+.edit-banner { position: fixed; top: 14px; left: 86px; z-index: 10001; background: var(--acid); color: var(--ink-dark); font-size: 19px; font-weight: 700; padding: 12px 22px; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+.edit-banner.show { opacity: 1; }
+body.editing [data-editable], body.editing .slide h1, body.editing .slide h2, body.editing .slide p, body.editing .slide li, body.editing .slide .tx, body.editing .slide .v, body.editing .slide .fa { outline: 1px dashed var(--acid-38); outline-offset: 4px; cursor: text; }
+.edit-note { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); z-index: 10001; font-size: 18px; color: var(--acid-60); background: var(--bg); border: 1px solid var(--acid-16); padding: 10px 20px; opacity: 0; transition: opacity 0.3s ease; pointer-events: none; }
+.edit-note.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+  <canvas class="gl" id="gl"></canvas>
+  <div class="reg tl"></div><div class="reg tr"></div><div class="reg bl"></div><div class="reg br"></div>
+
+  <!-- ============ SLIDE 1 · TITLE ============ -->
+  <section class="slide s-title" data-scene="hidden">
+    <div class="sc">
+      <div class="t-meta reveal"><span>آبان ۱۴۰۵</span><span class="en">HARNESS · 01 / 20</span></div>
+      <div class="t-mass"><h1 class="reveal d1">هرنس</h1></div>
+      <div class="t-block-row">
+        <div class="tblock reveal d3">
+          <div class="k">پروژه</div><div class="v">هرنس</div>
+          <div class="k">موضوع</div><div class="v">از مدل زبانی تا ایجنت</div>
+          <div class="k">ورق</div><div class="v en">01 / 20</div>
+          <div class="k">مقیاس</div><div class="v en">1:1</div>
+        </div>
+        <div class="t-band reveal d2"><span class="fa">از مدل زبانی تا ایجنت</span><span class="en">LLM → HARNESS → AGENT</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 2 · HOOK: bare engine ============ -->
+  <section class="slide" data-scene="engine">
+    <div class="sc right">
+      <h2 class="h-big reveal">این یک موتور است.</h2>
+      <p class="lead reveal d1">قدرتمند، و کاملاً بی‌حرکت.</p>
+      <p class="sub reveal d2">مدل زبانی می‌داند چه بگوید؛ اما دستی ندارد که کاری کند، چشمی ندارد که ببیند، و ترمزی ندارد که نگهش دارد.</p>
+    </div>
+    <div class="stamp reveal d3" style="bottom:110px;left:120px;">قدرت: <b>بی‌نهایت</b> · جهت: <b>صفر</b></div>
+  </section>
+
+  <!-- ============ SLIDE 3 · ENGINE = LLM ============ -->
+  <section class="slide" data-scene="engine-close">
+    <div class="sc right">
+      <h2 class="h-big reveal">موتور = مدل زبانی</h2>
+      <ul class="facts" style="list-style:none;margin-top:40px;display:grid;gap:22px;">
+        <li class="reveal d1" style="font-size:33px;font-weight:500;">زبان را می‌فهمد و تولید می‌کند</li>
+        <li class="reveal d2" style="font-size:33px;font-weight:500;">الگو را می‌بیند و استدلال می‌کند</li>
+        <li class="reveal d3" style="font-size:33px;font-weight:500;">اما عمل نمی‌کند؛ برق دارد، چرخ ندارد</li>
+      </ul>
+      <div class="bars reveal d4" role="img" aria-label="نمودار: قدرت کامل، عمل صفر">
+        <div class="bar-row"><span class="bar-k">قدرت</span><span class="bar-t"><i style="--w:96%"></i></span><span class="bar-v">100%</span></div>
+        <div class="bar-row"><span class="bar-k">عمل</span><span class="bar-t"><i style="--w:3%"></i></span><span class="bar-v">0%</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 4 · CHASSIS = HARNESS ============ -->
+  <section class="slide" data-scene="assemble">
+    <div class="sc right">
+      <h2 class="h-big reveal">شاسی = هرنس</h2>
+      <p class="lead reveal d1">هر چیزِ دورِ موتور.</p>
+      <p class="sub reveal d2">هرنس به مدل، دست و چشم می‌دهد، و کاری که می‌کند را مهار می‌کند: ابزار، حافظه، اجازه، ترمز.</p>
+      <div class="stamp reveal d3" style="position:absolute;top:84px;left:120px;">برش <b class="en">A-A</b> · مقیاس <b class="en">1:1</b></div>
+    </div>
+    <div class="co delay-1" style="top:450px;right:1570px;"><span class="dot"></span><span class="ln"></span><span class="tx">ابزارها<small>TOOLS</small></span></div>
+    <div class="co delay-2" style="top:240px;right:1320px;"><span class="dot"></span><span class="ln"></span><span class="tx">حافظه و زمینه<small>CONTEXT</small></span></div>
+    <div class="co rev delay-3" style="top:500px;left:720px;"><span class="dot"></span><span class="ln"></span><span class="tx">دسترسی‌ها<small>PERMISSIONS</small></span></div>
+    <div class="co delay-3" style="top:670px;right:1280px;"><span class="dot"></span><span class="ln"></span><span class="tx">ایمنی<small>SAFETY</small></span></div>
+  </section>
+
+  <!-- ============ SLIDE 5 · DRIVING = AGENT ============ -->
+  <section class="slide" data-scene="driving">
+    <div class="sc right" style="max-width:56%;">
+      <h2 class="h-big reveal">رانندگی = ایجنت</h2>
+      <div class="loop reveal d1"><span>ببین</span><span>برنامه‌ریزی کن</span><span>عمل کن</span><span>نتیجه را ببین</span></div>
+      <p class="en reveal d1" style="font-size:17px;color:var(--acid-60);margin-top:14px;text-align:right;">SEE → PLAN → ACT → OBSERVE</p>
+      <table class="diff reveal d2">
+        <tr><td class="ro">LLM</td><td>متن تولید می‌کند؛ پیشنهاد می‌دهد</td></tr>
+        <tr><td class="ro">HARNESS</td><td>ابزار و محدودیت می‌دهد؛ قدرت را مهار می‌کند</td></tr>
+        <tr><td class="ro">AGENT</td><td>کار را تمام می‌کند؛ حلقهٔ کامل، تا مقصد</td></tr>
+      </table>
+    </div>
+    <div class="loopring reveal d2" aria-hidden="true">
+      <svg viewBox="0 0 300 300">
+        <circle cx="150" cy="150" r="110" class="lr-ring"/>
+        <circle cx="150" cy="150" r="110" class="lr-marker"/>
+        <text x="150" y="30">ببین</text>
+        <text x="24" y="158">عمل کن</text>
+        <text x="276" y="158">برنامه</text>
+        <text x="150" y="284">نتیجه</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 6 · TWO WORLDS: LLM vs AGENT ============ -->
+  <section class="slide" data-scene="parked">
+    <div class="sc" style="padding:56px 96px;justify-content:center;">
+      <h2 class="reveal" style="font-size:64px;">دو دنیا، دو کار<span class="en" style="font-size:22px;color:var(--acid-60);margin-inline-start:18px;">PICK THE RIGHT WORLD</span></h2>
+      <div class="duo">
+        <div class="pcol reveal d1">
+          <span class="pk">مدل زبانی<span class="en">LLM</span></span>
+          <p class="po" style="font-size:28px;color:var(--acid);margin-bottom:10px;">«دربارهٔ ماشین شعر بگو»</p>
+          <p class="po" style="font-weight:400;">چت جواب می‌دهد — و عالی جواب می‌دهد: متن، ایده، ترجمه، توضیح. هر چیزی که جوابش «کلمه» باشد.</p>
+        </div>
+        <div class="pcol reveal d2">
+          <span class="pk">ایجنت<span class="en">AGENT</span></span>
+          <p class="po" style="font-size:28px;color:var(--acid);margin-bottom:10px;">«این باگ را درست کن»</p>
+          <p class="po" style="font-weight:400;">حلقه می‌چرخد: می‌خواند، وصله می‌زند، تست می‌گیرد. هر چیزی که جوابش «عمل» باشد.</p>
+        </div>
+      </div>
+      <p class="lead reveal d3" style="font-size:30px;margin-top:38px;">هر دو باهوش‌اند — اما فقط یکی دست دارد. کارِ درست را به دنیای درست بدهید.</p>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 6 · 3D INTERACTIVE ============ -->
+  <section class="slide s-orbit" data-scene="showcase">
+    <div class="sc center" style="justify-content:flex-start;padding-top:64px;">
+      <h2 class="reveal" style="font-size:88px;">ماشین را بچرخان</h2>
+      <p class="hint reveal d1">بکشید و رها کنید — با ماوس یا انگشت</p>
+      <button class="btn reveal d2" id="explodeBtn" style="margin-top:26px;">باز شدن قطعات</button>
+    </div>
+    <div class="co" style="top:480px;right:1420px;"><span class="dot"></span><span class="ln"></span><span class="tx">موتور<small>LLM</small></span></div>
+    <div class="co rev delay-1" style="top:640px;left:1150px;"><span class="dot"></span><span class="ln"></span><span class="tx">شاسی<small>HARNESS</small></span></div>
+    <div class="co delay-2" style="top:760px;right:1570px;"><span class="dot"></span><span class="ln"></span><span class="tx">رانندگی<small>AGENT</small></span></div>
+  </section>
+
+  <!-- ============ SLIDE 8 · SCRIPTED SIMULATION ============ -->
+  <section class="slide" data-scene="parked">
+    <div class="sc" style="padding:56px 96px;">
+      <div class="simhead2">
+        <h2 class="reveal" style="font-size:54px;">شبیه‌سازی: ایجنت یک باگ را درست می‌کند</h2>
+        <span class="chip reveal d1">شبیه‌سازی آفلاین، بدون مدل واقعی</span>
+      </div>
+      <div class="cine">
+        <div class="agent-panel reveal d1">
+          <span class="step-k" id="simStepK">STEP 1 / 5</span>
+          <span class="step-t" id="simStepT">آماده</span>
+          <span class="thought" id="simThought">پخش را بزنید — ایجنت شروع می‌کند.</span>
+          <div class="pips" id="simPips"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="sim-ctl">
+            <button class="btn small" id="simPlay">پخش</button>
+            <button class="btn small" id="simPause">توقف</button>
+            <button class="btn small" id="simStepBtn">گام بعد</button>
+            <button class="btn small" id="simReset">از اول</button>
+          </div>
+        </div>
+        <div class="terminal reveal d2" id="simTerm"><div class="ln out">harness simulator ready — waiting for play…</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 9 · INTERACTIVE SIMULATION ============ -->
+  <section class="slide" data-scene="parked">
+    <div class="sc" style="padding:56px 96px;">
+      <div class="simhead2">
+        <h2 class="reveal" style="font-size:54px;">فرمان را تو بگیر</h2>
+        <span class="chip reveal d1">شبیه‌سازی آفلاین، بدون مدل واقعی</span>
+      </div>
+      <div class="tasks reveal d1">
+        <button class="btn task" data-task="bug">رفع باگ</button>
+        <button class="btn task" data-task="feature">افزودن قابلیت</button>
+        <button class="btn task" data-task="tests">نوشتن تست</button>
+      </div>
+      <div class="cine">
+        <div class="agent-panel reveal d2">
+          <span class="step-k" id="taskStepK">STEP — / —</span>
+          <span class="step-t" id="taskStepT">منتظر فرمان</span>
+          <span class="thought" id="taskThought">یکی از کارها را انتخاب کنید.</span>
+          <div class="pips" id="taskPips"></div>
+        </div>
+        <div class="terminal reveal d3" id="taskTerm"><div class="ln out">agent idle — pick a task above.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 9 · SKILLS ============ -->
+  <section class="slide" data-scene="skill">
+    <div class="sc right">
+      <h2 class="h-big reveal">مهارت‌ها = آموزش راننده<span class="en" style="font-size:24px;color:var(--acid-60);margin-inline-start:18px;">SKILLS</span></h2>
+      <p class="lead reveal d1">همان ماشین — مهارت تازه سوار می‌شود.</p>
+      <p class="sub reveal d2">مهارت، دانشِ بسته‌بندی‌شده است: یک فایل <span class="en">SKILL.md</span> که به هرنس می‌گوید این کار را چگونه انجام دهد.</p>
+      <table class="mini reveal d3">
+        <tr><td>فایل SKILL.md</td><td>دانشِ گام‌به‌گام</td></tr>
+        <tr><td>همان ماشین</td><td>نتیجهٔ تازه</td></tr>
+      </table>
+    </div>
+    <div class="co delay-2" style="top:300px;right:1360px;"><span class="dot"></span><span class="ln"></span><span class="tx">ماژول مهارت<small>SKILL.MD</small></span></div>
+  </section>
+
+  <!-- ============ SLIDE 10 · PROMPT PAIR: WITH vs WITHOUT SKILLS ============ -->
+  <section class="slide" data-scene="parked">
+    <div class="sc" style="padding:56px 96px;justify-content:center;">
+      <h2 class="reveal" style="font-size:64px;">دو پرامپت، یک کار<span class="en" style="font-size:22px;color:var(--acid-60);margin-inline-start:18px;">ONE JOB · TWO PROMPTS</span></h2>
+      <div class="duo">
+        <div class="pcol reveal d1">
+          <span class="pk">با مهارت‌ها<span class="en">WITH SKILLS</span></span>
+          <pre class="ex"># Build: NASA Space Exploration Website
+#   — Skill-Assisted
+
+You MUST read and actively use these
+four installed skills:
+  brainstorming · grill-me
+  impeccable · ponytail
+
+Brainstorm and select the strongest
+concept. Grill-me the key decisions.
+Deliver a working, polished product.</pre>
+          <p class="po">نتیجه: طراحی، تست، بازبینی — مسیر را مهارت‌ها دیکته می‌کنند.</p>
+        </div>
+        <div class="pcol without reveal d2">
+          <span class="pk">بدون مهارت<span class="en">NO SKILLS</span></span>
+          <pre class="ex"># Build: NASA Space Exploration Website
+
+Build an exceptional, immersive
+NASA-inspired website.
+
+Make independent design decisions.
+Do not ask unnecessary questions.</pre>
+          <p class="po">نتیجه: وب‌سایتی که کار می‌کند — تا جایی که حدس بزند.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 12 · MODELS: TIERS & TRAINING ============ -->
+  <section class="slide" data-scene="parked">
+    <div class="sc" style="padding:56px 96px;justify-content:center;">
+      <h2 class="reveal" style="font-size:64px;">مدل‌ها: کلاس‌ها و آموزش<span class="en" style="font-size:22px;color:var(--acid-60);margin-inline-start:18px;">MODEL TIERS &amp; TRAINING</span></h2>
+      <div class="models">
+        <div class="tiers reveal d1">
+          <div class="tier"><span class="tk">FRONTIER</span><span class="tb" style="width:100%"></span></div>
+          <p class="td">مرزِ توانایی — گران، کند، نابغه</p>
+          <div class="tier"><span class="tk">MID</span><span class="tb" style="width:62%"></span></div>
+          <p class="td">کار روزمره — سریع و ارزان</p>
+          <div class="tier"><span class="tk">SMALL</span><span class="tb" style="width:34%"></span></div>
+          <p class="td">روی دستگاهِ خودت — خصوصی و فوری</p>
+        </div>
+        <div class="training reveal d2">
+          <div class="tstep"><span class="n">1</span><div><div class="tt">PRE-TRAINING</div><div class="td">خواندن کوهی از متن و کد — ماه‌ها، هزینهٔ سنگین</div></div></div>
+          <div class="tstep"><span class="n">2</span><div><div class="tt">FINE-TUNING</div><div class="td">آموزش روی نمونه‌های خوب — رفتار مفید</div></div></div>
+          <div class="tstep"><span class="n">3</span><div><div class="tt">RLHF</div><div class="td">بازخورد انسانی — یادگیریِ چه چیزی مفید و بی‌خطر است</div></div></div>
+        </div>
+      </div>
+      <p class="lead reveal d3" style="font-size:30px;margin-top:38px;">کلاسِ مدل مثل انتخاب موتور است — و همه با همین سه مرحله ساخته می‌شوند.</p>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 13 · TOKENS ============ -->
+  <section class="slide" data-scene="parked">
+    <div class="sc" style="padding:56px 96px;justify-content:center;">
+      <h2 class="reveal" style="font-size:64px;">توکن چیست؟<span class="en" style="font-size:22px;color:var(--acid-60);margin-inline-start:18px;">TOKENS</span></h2>
+      <p class="sub reveal d1" style="max-width:none;">مدل متن را حرف‌به‌حرف نمی‌بیند — تکه‌تکه می‌بیند. به هر تکه می‌گویند توکن.</p>
+      <div class="tokstage reveal d2" id="tokstage" aria-hidden="true"></div>
+      <div class="tokcount reveal d2"><b id="tokN">۰</b> tokens</div>
+      <p class="lead reveal d3" style="font-size:30px;">زمینه = بودجهٔ توکن. هر چیزی که ایجنت می‌بیند، از این بودجه خرج می‌شود.</p>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 14 · CONTEXT ============ -->
+  <section class="slide" data-scene="parked">
+    <div class="sc" style="padding:56px 96px;justify-content:center;">
+      <h2 class="reveal" style="font-size:64px;">زمینه: ایجنت چه می‌بیند؟<span class="en" style="font-size:22px;color:var(--acid-60);margin-inline-start:18px;">CONTEXT WINDOW</span></h2>
+      <div class="tooldef">
+        <div class="ctxframe reveal d1" aria-hidden="true">
+          <div class="ctx-block">SYSTEM PROMPT</div>
+          <div class="ctx-block">SKILLS</div>
+          <div class="ctx-block">CONVERSATION</div>
+          <div class="ctx-block">TOOL RESULTS</div>
+          <div class="ctx-block">FILES</div>
+          <div class="ctx-block dim">TOOL RESULTS</div>
+          <div class="ctx-block dim">CONVERSATION …</div>
+          <div class="ctx-limit">— window limit —</div>
+        </div>
+        <div class="tanno reveal d2">
+          <p class="ta"><b>SYSTEM PROMPT</b> — قوانینی که هرنس به مدل می‌دهد.</p>
+          <p class="ta"><b>SKILLS + FILES</b> — دانش و پروژه‌ای که پشتِ کار است.</p>
+          <p class="ta"><b>CONVERSATION + TOOL RESULTS</b> — هر چیزی که تا الان گفته و دیده.</p>
+          <p class="ta"><b>WINDOW LIMIT</b> — پنجره محدود است؛ هرنس قدیمی‌ها را خلاصه می‌کند: <b>compaction</b>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 12 · INTERFACE ============ -->
+  <section class="slide" data-scene="parked">
+    <div class="sc" style="padding:56px 96px;justify-content:center;">
+      <h2 class="reveal" style="font-size:64px;">زیر میکروسکوپ: یک Interface<span class="en" style="font-size:22px;color:var(--acid-60);margin-inline-start:18px;">TOOL DEFINITION</span></h2>
+      <div class="tooldef">
+        <div class="tanno reveal d2">
+          <p class="ta"><b>"name"</b> — مدل با همین نام ابزار را صدا می‌زند.</p>
+          <p class="ta"><b>"description"</b> — مدل این را می‌خواند تا بفهمد این ابزار چی‌ست و کِی به کار می‌آید.</p>
+          <p class="ta"><b>"parameters"</b> — ورودی‌هایی که باید بدهد؛ همین قرارداد، رابطِ مدل با دنیای بیرون است.</p>
+        </div>
+        <pre class="reveal d1">{
+  "name": "read_file",
+  "description":
+    "Read a file from the workspace",
+  "parameters": {
+    "path": "string"
+  }
+}</pre>
+      </div>
+      <p class="lead reveal d3" style="font-size:30px;margin-top:34px;">هر ابزار = یک قرارداد: نام + توضیح + ورودی — <span class="en">MCP</span> همین قراردادها را استاندارد می‌کند.</p>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 10 · MCP ============ -->
+  <section class="slide" data-scene="mcp">
+    <div class="sc right">
+      <h2 class="h-big reveal">MCP = پورت استاندارد</h2>
+      <p class="lead reveal d1">هر افزونه‌ای، از هر سازنده‌ای — به همان سوکت.</p>
+      <p class="sub reveal d2">یک استاندارد باز: فایل، دیتابیس، مرورگر — همه از یک درگاه وصل می‌شوند، بدون سیم‌کشی تازه.</p>
+      <table class="mini reveal d3">
+        <tr><td>یک پریز</td><td>هر افزونه</td></tr>
+        <tr><td>هر سازنده</td><td>بی‌سیم‌کشیِ تازه</td></tr>
+      </table>
+    </div>
+    <div class="co delay-2" style="top:540px;right:1500px;"><span class="dot"></span><span class="ln"></span><span class="tx">درگاه استاندارد<small>MCP PORT</small></span></div>
+  </section>
+
+  <!-- ============ SLIDE 11 · PLAN MODE ============ -->
+  <section class="slide" data-scene="plan">
+    <div class="sc right">
+      <h2 class="h-big reveal">حالت برنامه‌ریزی = مسیریاب<span class="en" style="font-size:24px;color:var(--acid-60);margin-inline-start:18px;">PLAN MODE</span></h2>
+      <p class="lead reveal d1">قبل از حرکت، مسیر کشیده می‌شود.</p>
+      <p class="sub reveal d2">ایجنت نقشه را نشان می‌دهد، شما تأیید می‌کنید؛ بعد ماشین استارت می‌خورد.</p>
+      <table class="mini reveal d3">
+        <tr><td>مسیر روی نقشه</td><td>قبل از هر عمل</td></tr>
+        <tr><td>تأیید شما</td><td>بعدش حرکت</td></tr>
+      </table>
+    </div>
+    <div class="approve" id="approveChip">تأیید مسیر — قبل از هر عمل</div>
+  </section>
+
+  <!-- ============ SLIDE 12 · SANDBOX ============ -->
+  <section class="slide" data-scene="sandbox">
+    <div class="sc right">
+      <h2 class="h-big reveal">سندباکس = پیست آزمون<span class="en" style="font-size:24px;color:var(--acid-60);margin-inline-start:18px;">SANDBOX</span></h2>
+      <p class="lead reveal d1">خطا کردن این‌جا ارزان است.</p>
+      <p class="sub reveal d2">اجرای کد و تست، داخل حصار می‌ماند — خروج، فقط با تأیید.</p>
+      <table class="mini reveal d3">
+        <tr><td>اجرای کد</td><td>داخل حصار</td></tr>
+        <tr><td>خروج</td><td>فقط با تأیید</td></tr>
+      </table>
+    </div>
+    <div class="co delay-2" style="top:800px;right:1460px;"><span class="dot"></span><span class="ln"></span><span class="tx">حصار ایزوله<small>SANDBOX</small></span></div>
+  </section>
+
+  <!-- ============ SLIDE 16 · PROJECT: HUEHUNCH ============ -->
+  <section class="slide" data-scene="huehunch">
+    <div class="sc" style="padding:64px 104px;">
+      <h2 class="reveal" style="font-size:96px;">هیوهانچ</h2>
+      <p class="lead reveal d1" style="font-size:34px;">بازی مهمانیِ حدس رنگ — یک کلمه بگو، رنگ را پیدا کن (۳ تا ۶ نفر، داخل مرورگر)</p>
+      <div class="qr-row">
+        <div class="qr reveal d2" id="qr1" role="img" aria-label="کد QR هیوهانچ"></div>
+        <div class="qr-meta reveal d3">
+          <span class="en">huehunch.vercel.app</span>
+          <span class="qr-hint">گوشی‌ها را بیاورید — همین حالا قابل بازیه</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 17 · PROJECT: NEON ARENA ============ -->
+  <section class="slide" data-scene="arena">
+    <div class="sc" style="padding:64px 104px;">
+      <h2 class="reveal" style="font-size:96px;">نئون آرنا</h2>
+      <p class="lead reveal d1" style="font-size:34px;">شوتر سه‌بعدیِ موج‌به‌موج — داخل مرورگر، هدشات ۲٫۵ برابر، زنده بمان</p>
+      <div class="qr-row">
+        <div class="qr reveal d2" id="qr2" role="img" aria-label="کد QR نئون آرنا"></div>
+        <div class="qr-meta reveal d3">
+          <span class="en">neon-arena-r5zh.vercel.app</span>
+          <span class="qr-hint">کیبورد و ماوس، یا لمس — رکورد بزن</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 18 · PROJECT: RAID NIGHT ============ -->
+  <section class="slide" data-scene="raid">
+    <div class="sc" style="padding:64px 104px;">
+      <h2 class="reveal" style="font-size:96px;">شبِ رید</h2>
+      <p class="lead reveal d1" style="font-size:34px;">اتاق صدای گروهی — یک لینک، یک رمز، داخل شو</p>
+      <div class="qr-row">
+        <div class="qr reveal d2" id="qr3" role="img" aria-label="کد QR شب رید"></div>
+        <div class="qr-meta reveal d3">
+          <span class="en">raid-night.vercel.app</span>
+          <span class="qr-hint">رمز امشب را از صاحب اتاق بپرس</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SLIDE 13 · PAYOFF: EXPLODED + ALL DIMENSIONS ============ -->
+  <section class="slide" data-scene="exploded">
+    <div class="sc center" style="justify-content:flex-start;padding-top:58px;">
+      <h2 class="reveal" style="font-size:80px;">همهٔ ابعاد، یک ماشین</h2>
+    </div>
+    <div class="co delay-1" style="top:300px;right:1520px;"><span class="dot"></span><span class="ln"></span><span class="tx">مدل زبانی<small>LLM</small></span></div>
+    <div class="co delay-1" style="top:640px;right:1220px;"><span class="dot"></span><span class="ln"></span><span class="tx">هرنس<small>HARNESS</small></span></div>
+    <div class="co delay-2" style="top:190px;right:1230px;"><span class="dot"></span><span class="ln"></span><span class="tx">مهارت‌ها<small>SKILLS</small></span></div>
+    <div class="co delay-2" style="top:530px;right:1540px;"><span class="dot"></span><span class="ln"></span><span class="tx">پورت MCP<small>MCP</small></span></div>
+    <div class="co rev delay-3" style="top:640px;left:260px;"><span class="dot"></span><span class="ln"></span><span class="tx">برنامه‌ریزی<small>PLAN MODE</small></span></div>
+    <div class="co rev delay-3" style="top:570px;left:1500px;"><span class="dot"></span><span class="ln"></span><span class="tx">سندباکس<small>SANDBOX</small></span></div>
+  </section>
+
+  <!-- ============ SLIDE 14 · REVEAL ============ -->
+  <section class="slide s-reveal" data-scene="leave">
+    <div class="sc center">
+      <h1 class="reveal">این ارائه را یک ایجنت ساخت.</h1>
+      <p class="lead reveal d1">از طریق هرنس؛ همین‌طور که می‌بینید.</p>
+      <p class="sub reveal d2" style="margin-inline:auto;">فرمان، دست شماست: یک هرنس را همین امروز امتحان کنید.</p>
+    </div>
+  </section>
+</main>
+</div>
+
+<div class="progress"><i id="progressBar"></i></div>
+<nav class="deck-controls" aria-label="ناوبری ارائه">
+  <button id="btnPrev" aria-label="اسلاید قبلی"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4 L14 10 L8 16"/></svg></button>
+  <span class="count" id="slideCount">۰۱ / ۱۴</span>
+  <button id="btnNext" aria-label="اسلاید بعدی"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4 L6 10 L12 16"/></svg></button>
+  <span class="simhint" id="simHint">کلیدها: فضا / فلش‌ها</span>
+</nav>
+
+<div class="edit-hotzone"></div>
+<button class="edit-toggle" id="editToggle" title="حالت ویرایش (E)">✎</button>
+<span class="edit-banner" id="editBanner">حالت ویرایش فعال است — روی متن بزنید · Ctrl+S ذخیره</span>
+<span class="edit-note" id="editNote">ذخیره شد</span>
+
+<script>

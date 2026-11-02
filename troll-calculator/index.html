@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ماشین‌حسابِ شیطون — هیچ‌وقت حساب نمی‌شود</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Lalezar&family=Vazirmatn:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ===========================================
+   WORLD: same binary acid-on-near-black.
+   A calculator that does everything to avoid
+   calculating. RTL, single file, zero deps.
+   =========================================== */
+:root {
+  --bg: #1C1C1C;
+  --acid: #F5D200;
+  --acid-60: rgba(245, 210, 0, 0.6);
+  --acid-38: rgba(245, 210, 0, 0.38);
+  --acid-16: rgba(245, 210, 0, 0.16);
+  --acid-08: rgba(245, 210, 0, 0.08);
+  --ink-dark: #1C1C1C;
+  --font-display: 'Lalezar', 'Vazirmatn', sans-serif;
+  --font-body: 'Vazirmatn', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  background: var(--bg);
+  background-image: linear-gradient(var(--acid-08) 1px, transparent 1px), linear-gradient(90deg, var(--acid-08) 1px, transparent 1px);
+  background-size: 80px 80px;
+  color: var(--acid);
+  font-family: var(--font-body);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 32px 16px 60px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+::selection { background: var(--acid); color: var(--ink-dark); }
+
+h1 { font-family: var(--font-display); font-weight: 400; font-size: 44px; margin-bottom: 4px; }
+.tag { font-size: 16px; color: var(--acid-60); margin-bottom: 22px; }
+
+/* === THE FACE === */
+.face-stage { position: relative; width: 300px; height: 170px; margin-bottom: 6px; }
+.eye { position: absolute; top: 24px; width: 64px; height: 64px; background: var(--acid); }
+.eye.l { left: 30px; } .eye.r { right: 30px; }
+.pupil { position: absolute; width: 22px; height: 22px; background: var(--ink-dark); top: 21px; left: 21px; transition: transform 0.15s ease; }
+.mouth { position: absolute; bottom: 18px; left: 60px; right: 60px; height: 44px; }
+.mouth svg { width: 100%; height: 100%; display: block; }
+.mouth path { fill: none; stroke: var(--acid); stroke-width: 6; stroke-linecap: square; }
+.face-stage.laugh .eye { animation: squint 0.18s ease-in-out infinite alternate; }
+.face-stage.laugh .mouth { animation: LOL 0.18s ease-in-out infinite alternate; }
+.face-stage.laugh { animation: shake 0.18s linear infinite; }
+.face-stage.think .pupil { transform: translateY(-16px); }
+@keyframes squint { from { height: 64px; } to { height: 14px; } }
+@keyframes LOL { from { transform: scaleY(1); } to { transform: scaleY(1.6) translateY(6px); } }
+@keyframes shake { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
+
+.speech { min-height: 34px; font-size: 19px; font-weight: 700; color: var(--acid-60); margin-bottom: 14px; text-align: center; max-width: 480px; }
+.speech b { color: var(--acid); }
+
+/* === DISPLAY === */
+.display {
+  width: min(440px, 92vw); border: 2px solid var(--acid); background: rgba(0, 0, 0, 0.35);
+  font-family: var(--font-mono); direction: ltr; text-align: right;
+  padding: 18px 22px; margin-bottom: 22px; position: relative; min-height: 92px;
+}
+.expr { font-size: 20px; color: var(--acid-60); min-height: 26px; word-break: break-all; }
+.result { font-size: 46px; font-weight: 700; min-height: 56px; word-break: break-all; }
+.result.wrong { color: var(--acid-60); text-decoration: line-through; text-decoration-thickness: 3px; }
+.loadbar { position: absolute; inset-inline: 0; bottom: 0; height: 5px; background: var(--acid-16); }
+.loadbar i { display: block; height: 100%; width: 0; background: var(--acid); transition: width 0.2s linear; }
+
+/* === KEYPAD === */
+.pad { display: grid; grid-template-columns: repeat(4, 88px); gap: 14px; justify-content: center; }
+.key {
+  font-family: var(--font-mono); font-size: 30px; font-weight: 700; color: var(--acid);
+  background: transparent; border: 2px solid var(--acid); cursor: pointer;
+  height: 74px; display: grid; place-items: center; user-select: none;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: bobble 2.6s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.14s);
+  will-change: transform;
+}
+.key.op { color: var(--acid-60); border-color: var(--acid-38); }
+.key:hover { background: var(--acid); color: var(--ink-dark); }
+.key:focus-visible { outline: 2px dashed var(--acid-60); outline-offset: 3px; }
+@keyframes bobble { 0%, 100% { rotate: 0deg; translate: 0 0; } 25% { rotate: 2deg; translate: 0 -3px; } 50% { rotate: -2deg; } 75% { rotate: 1deg; translate: 0 2px; } }
+
+/* === PAYWALL MODAL === */
+.modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.88); display: none; place-items: center; z-index: 50; }
+.modal.show { display: grid; }
+.card { width: min(520px, 92vw); border: 2px solid var(--acid); background: var(--bg); padding: 34px 38px; }
+.card h2 { font-family: var(--font-display); font-weight: 400; font-size: 38px; margin-bottom: 10px; }
+.card p { font-size: 19px; color: var(--acid-60); margin-bottom: 22px; line-height: 1.7; }
+.plan { display: flex; justify-content: space-between; border: 1px solid var(--acid-16); padding: 13px 20px; margin-bottom: 12px; font-size: 18px; }
+.plan b { color: var(--acid); }
+.plan .en { direction: ltr; unicode-bidi: isolate; font-family: var(--font-mono); font-size: 14px; }
+.card .row { display: flex; gap: 16px; margin-top: 24px; }
+.buy, .no {
+  font-family: var(--font-body); font-weight: 700; font-size: 20px; cursor: pointer;
+  padding: 13px 30px; border: 2px solid var(--acid); background: var(--acid); color: var(--ink-dark);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+}
+.no { background: transparent; color: var(--acid-60); border-color: var(--acid-38); }
+.no small { display: block; font-size: 12px; font-weight: 400; }
+
+/* === TOASTS === */
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); opacity: 0;
+  background: var(--acid); color: var(--ink-dark); font-size: 17px; font-weight: 700;
+  padding: 12px 26px; z-index: 40; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease; max-width: 88vw; text-align: center; }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+footer { margin-top: 40px; font-size: 14px; color: var(--acid-38); }
+footer .en { direction: ltr; unicode-bidi: isolate; font-family: var(--font-mono); }
+
+@media (prefers-reduced-motion: reduce) {
+  .key { animation: none; }
+  .face-stage.laugh, .face-stage.laugh .eye, .face-stage.laugh .mouth { animation: none; }
+  .key { transition: none; }
+}
+</style>
+</head>
+<body>
+<h1>ماشین‌حسابِ شیطون</h1>
+<p class="tag">قانون شمارهٔ یک: این‌جا هیچ‌چیز طبق انتظار پیش نمی‌رود.</p>
+
+<div class="face-stage" id="face" aria-hidden="true">
+  <div class="eye l"><div class="pupil"></div></div>
+  <div class="eye r"><div class="pupil"></div></div>
+  <div class="mouth">
+    <svg viewBox="0 0 180 44" preserveAspectRatio="none">
+      <path id="mouthPath" d="M10 14 Q 90 14 170 14"/>
+    </svg>
+  </div>
+</div>
+<p class="speech" id="speech">سلام! من یک ماشین‌حساب‌ام. فعلاً.</p>
+
+<div class="display">
+  <div class="expr" id="expr">&nbsp;</div>
+  <div class="result" id="result">۰</div>
+  <div class="loadbar" id="loadbar" hidden><i id="loadfill"></i></div>
+</div>
+
+<div class="pad" id="pad">
+  <button class="key" style="--i:0" data-k="7">۷</button>
+  <button class="key" style="--i:1" data-k="8">۸</button>
+  <button class="key" style="--i:2" data-k="9">۹</button>
+  <button class="key op" style="--i:3" data-k="/">÷</button>
+  <button class="key" style="--i:4" data-k="4">۴</button>
+  <button class="key" style="--i:5" data-k="5">۵</button>
+  <button class="key" style="--i:6" data-k="6">۶</button>
+  <button class="key op" style="--i:7" data-k="*">×</button>
+  <button class="key" style="--i:8" data-k="1">۱</button>
+  <button class="key" style="--i:9" data-k="2">۲</button>
+  <button class="key" style="--i:10" data-k="3">۳</button>
+  <button class="key op" style="--i:11" data-k="-">−</button>
+  <button class="key" style="--i:12" data-k="0">۰</button>
+  <button class="key" style="--i:13" data-k=".">٫</button>
+  <button class="key" style="--i:14" data-k="C">C</button>
+  <button class="key op" style="--i:15" data-k="+">+</button>
+  <button class="key op" style="--i:16; grid-column: span 4; height: 64px;" data-k="=">=</button>
+</div>
+
+<div class="modal" id="paywall" role="dialog" aria-modal="true" aria-label="پیشنهاد اشتراک">
+  <div class="card">
+    <h2>صبر کنید!</h2>
+    <p id="payReason">محاسبهٔ <b>۱ + ۱</b> از توان فنی نسخهٔ رایگان خارج است. برای مسائل این‌چنینی پیچیده، به اشتراک ویژه ارتقا دهید.</p>
+    <div class="plan"><span>رایگان</span><span>فقط نگاه کردن به دکمه‌ها <span class="en">FREE</span></span></div>
+    <div class="plan"><span>ویژهٔ طلایی</span><span>۹٬۹۹۹٬۰۰۰ تومان / هر دقیقه <span class="en">PRO</span></span></div>
+    <div class="row">
+      <button class="buy" id="buyBtn">خرید اشتراک</button>
+      <button class="no" id="noBtn">نه، ممنون<small id="noHint">این دکمه هم فرار می‌کند</small></button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<footer>ساخته‌شده توسط یک ایجنت، با مهارت — <span class="en">troll mode: always on</span></footer>
+
+<script>
+'use strict';
+/* ===========================================
+   TROLL CALCULATOR — one job, refused creatively.
+   Persian digits, RTL copy, LTR math.
+   =========================================== */
+const FA = '۰۱۲۳۴۵۶۷۸۹';
+const fa = s => String(s).replace(/\d/g, d => FA[d]);
+const $ = s => document.querySelector(s);
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const exprEl = $('#expr'), resultEl = $('#result'), speechEl = $('#speech');
+const face = $('#face'), mouthPath = $('#mouthPath');
+let expr = '', justTrolled = false, lastGood = null, busy = false;
+
+const MOUTHS = {
+  flat: 'M10 14 Q 90 14 170 14',
+  grin: 'M10 10 Q 90 34 170 10',
+  laugh: 'M10 8 Q 90 46 170 8 M30 20 L38 30 M60 26 L60 38 M90 28 L90 40 M120 26 L120 38 M150 20 L142 30'
+};
+function setMouth(name) { mouthPath.setAttribute('d', MOUTHS[name] || MOUTHS.flat); }
+
+function say(html, ms = 3200) {
+  speechEl.innerHTML = html;
+  clearTimeout(say._t);
+  say._t = setTimeout(() => { speechEl.textContent = 'سلام! من یک ماشین‌حساب‌ام. فعلاً.'; }, ms);
+}
+function laugh(ms = 1200) {
+  face.classList.add('laugh'); setMouth('laugh');
+  setTimeout(() => { face.classList.remove('laugh'); setMouth('flat'); }, ms);
+}
+function toast(html, ms = 2600) {
+  const t = $('#toast');
+  t.innerHTML = html; t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+/* eyes follow the pointer, when the face is being polite */
+document.addEventListener('pointermove', e => {
+  if (face.classList.contains('laugh')) return;
+  const r = face.getBoundingClientRect();
+  const dx = Math.max(-12, Math.min(12, (e.clientX - (r.left + 150)) / 22));
+  const dy = Math.max(-10, Math.min(10, (e.clientY - (r.top + 56)) / 22));
+  face.querySelectorAll('.pupil').forEach(p => p.style.transform = `translate(${dx}px, ${dy}px)`);
+});
+
+/* === INPUT (keyboard works too — the trolling is fair) === */
+const KEYS = '0123456789.*-+/=';
+function press(k) {
+  if (busy) return;
+  if (k === 'C') { expr = ''; justTrolled = false; lastGood = null;
+    exprEl.innerHTML = '&nbsp;'; resultEl.textContent = '۰'; resultEl.classList.remove('wrong');
+    setMouth('flat'); return; }
+  if (k === '=') return equals();
+  if (!KEYS.includes(k)) return;
+  expr += k;
+  exprEl.textContent = fa(expr);
+  face.classList.add('think'); setMouth('flat');
+  clearTimeout(press._t);
+  press._t = setTimeout(() => face.classList.remove('think'), 500);
+}
+$('#pad').addEventListener('click', e => {
+  const b = e.target.closest('.key');
+  if (b) press(b.dataset.k);
+});
+document.addEventListener('keydown', e => {
+  if (e.target.closest('button') && e.key === 'Enter') return;
+  const k = e.key === 'Enter' ? '=' : (e.key === 'Escape' ? 'C' : e.key);
+  if (KEYS.includes(k)) { e.preventDefault(); press(k); }
+});
+
+/* === BUTTONS FLEE THE CURSOR === */
+if (!REDUCED) {
+  const pad = $('#pad');
+  pad.addEventListener('pointermove', e => {
+    pad.querySelectorAll('.key').forEach(btn => {
+      const r = btn.getBoundingClientRect();
+      const bx = r.left + r.width / 2, by = r.top + r.height / 2;
+      const d = Math.hypot(e.clientX - bx, e.clientY - by);
+      if (d < 110 && !btn.dataset.fleeing) {
+        btn.dataset.fleeing = '1';
+        const ang = Math.atan2(by - e.clientY, bx - e.clientX);
+        btn.style.transform = `translate(${Math.cos(ang) * 78}px, ${Math.sin(ang) * 78}px) rotate(${(Math.random() * 14 - 7).toFixed(1)}deg)`;
+        clearTimeout(btn._t);
+        btn._t = setTimeout(() => { btn.style.transform = ''; delete btn.dataset.fleeing; }, 650);
+      }
+    });
+  });
+}
+
+/* === THE EQUALS KEY: five ways to not answer === */
+function equals() {
+  if (!expr || busy) return;
+  let val;
+  try { val = Function('"use strict"; return (' + expr.replace(/,/g, '') + ')')(); }
+  catch (e) { troll('این که حساب نیست، شعر است. یک عبارت درست بنویس.'); laugh(); return; }
+  if (!isFinite(val)) { troll('تقسیم بر صفر؟ حتی من boundry‌ام را دارم.'); laugh(); return; }
+
+  /* 1 — the famous paywall: trivially easy sums are "PRO features" */
+  const m = expr.match(/^(\d+)\s*\+\s*(\d+)$/);
+  if (m && Number(m[1]) + Number(m[2]) <= 4 && Math.random() < 0.85) {
+    paywall(`${fa(m[1])} + ${fa(m[2])}`);
+    return;
+  }
+  /* 2 — long math gets a fake enterprise pipeline */
+  if (expr.length >= 9 && Math.random() < 0.5) return fakePipeline(val);
+  /* 3 — 30% of the time: confidently wrong, then "fine, FINE" */
+  if (!justTrolled && Math.random() < 0.3) {
+    const wrong = val + (val === 0 ? 7 : (Math.random() < 0.5 ? -1 : 1) * Math.ceil(Math.abs(val) * 0.4 + 3));
+    justTrolled = true; lastGood = val;
+    resultEl.textContent = fa(Math.round(wrong * 100) / 100);
+    resultEl.classList.add('wrong');
+    troll('<b>تمام شد!</b> (اشتباه گفتم — دوباره = بزن، فعلاً حوصله دارم)');
+    laugh(1600);
+    return;
+  }
+  /* 4 — small results get billed, big ones get envied */
+  if (Math.abs(val) < 3 && Math.random() < 0.4) { paywall(fa(expr)); return; }
+  /* 5 — answer, but never without a comment */
+  justTrolled = false;
+  resultEl.textContent = fa(Math.round(val * 100) / 100);
+  resultEl.classList.remove('wrong');
+  const quips = [
+    'درست است — ولی می‌توانستی خودت هم حساب کنی.',
+    'این یکی مجانی بود. بعدی؟ معلوم نیست.',
+    'جواب درست! اشتراک ویژه‌ات کار کرد.',
+    'باشه باشه، این هم حساب شد. خوشحالی؟',
+    'دادم که دادم. از تعجب نترک.'
+  ];
+  say(quips[Math.floor(Math.random() * quips.length)]);
+  if (Math.random() < 0.5) laugh(700);
+}
+
+function troll(html) { say(html, 4200); }
+
+/* fake enterprise pipeline for long expressions */
+function fakePipeline(val) {
+  busy = true;
+  const steps = ['در حال مشورت با سرورهای راه دور…', 'تأیید مالی…', 'صبر کن — این یکی را باید مدیر تأیید کند…', 'تقریباً…'];
+  const bar = $('#loadbar'), fill = $('#loadfill');
+  bar.hidden = false; let i = 0;
+  say(steps[0], 2400);
+  const iv = setInterval(() => {
+    i++;
+    fill.style.width = (i / 4) * 100 + '%';
+    if (steps[i]) say(steps[i], 2400);
+    if (i >= 4) {
+      clearInterval(iv);
+      setTimeout(() => {
+        bar.hidden = true; fill.style.width = '0'; busy = false;
+        resultEl.textContent = fa(Math.round(val * 100) / 100);
+        resultEl.classList.remove('wrong');
+        say('تمام شد. فقط برای تو این‌قدر زحمت کشیدم.');
+        laugh(900);
+      }, 350);
+    }
+  }, 650);
+}
+
+/* === THE PAYWALL === */
+const noTries = ['این دکمه هم فرار می‌کند', 'گفتم فرار می‌کند', 'باشه باشه… آخرین بار'];
+function paywall(exprText) {
+  busy = true;
+  $('#payReason').innerHTML = `محاسبهٔ <b>${exprText}</b> از توان فنی نسخهٔ رایگان خارج است. برای مسائل این‌چنینی پیچیده، به اشتراک ویژه ارتقا دهید.`;
+  $('#paywall').classList.add('show');
+  laugh(1800);
+}
+function closePaywall() {
+  $('#paywall').classList.remove('show');
+  busy = false;
+  justTrolled = false;
+}
+$('#buyBtn').addEventListener('pointerenter', function () {
+  if (REDUCED) return;
+  this.style.transform = `translate(${Math.random() * 160 - 80}px, ${Math.random() * 120 - 60}px) rotate(${(Math.random() * 10 - 5).toFixed(1)}deg)`;
+});
+$('#buyBtn').addEventListener('click', function () {
+  this.style.transform = '';
+  troll('پرداخت انجام نشد — سرور ما هم به ما اعتماد ندارد.');
+  laugh(); closePaywall();
+});
+let noCount = 0;
+$('#noBtn').addEventListener('click', function () {
+  noCount++;
+  if (noCount < 3) {
+    this.style.transform = `scale(${1 - noCount * 0.25})`;
+    $('#noHint').textContent = noTries[noCount] || '…';
+    laugh(600);
+  } else {
+    this.style.transform = '';
+    closePaywall();
+    resultEl.textContent = fa('۲');
+    say('آفرین. مقاومت کردی. ۱+۱ می‌شود ۲ — مجانی، فقط برای تو.');
+    laugh(1400);
+  }
+});
+
+/* === RANDOM PRANKS === */
+const PRANKS = [
+  'راستی — اشتراک ویژه‌ات دیروز ۹۹٪ تخفیف داشت. دیروز.',
+  'می‌دانی چرا دکمه‌ها فرار می‌کنند؟ ورزش می‌خواهند. سهم من است.',
+  'یک راز: من هر روز صبح هزار عدد اشتباه حساب می‌کنم، فقط برای تمرین.',
+  'به جای این‌جا، می‌توانستی از گوشی‌ات ماشین‌حساب خودت را باز کنی. اما نکردی که.',
+  'کلید = امروز خلق‌وخو ندارد. کلید C همیشه مهمان ماست.',
+  'من فقط یک اسکریپت هستم. ولی اسکریپتِ باحالی هستم، نه؟',
+  'هر بار که اشتباه می‌کنم، یک دانشجو جایی لبخند می‌زند. ماموریت من همین است.'
+];
+function prankLoop() {
+  setTimeout(() => {
+    if (!busy && !$('#paywall').classList.contains('show')) {
+      toast(PRANKS[Math.floor(Math.random() * PRANKS.length)]);
+      if (Math.random() < 0.4) laugh(800);
+    }
+    prankLoop();
+  }, 18000 + Math.random() * 15000);
+}
+prankLoop();
+
+/* blink, occasionally, like something alive */
+(function blinkLoop() {
+  setTimeout(() => {
+    face.querySelectorAll('.pupil').forEach(p => { p.style.height = '4px'; p.style.top = '30px'; });
+    setTimeout(() => face.querySelectorAll('.pupil').forEach(p => { p.style.height = '22px'; p.style.top = '21px'; }), 130);
+    blinkLoop();
+  }, 2400 + Math.random() * 3200);
+})();
+</script>
+</body>
+</html>
