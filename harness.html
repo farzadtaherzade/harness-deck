@@ -1035,11 +1035,11 @@ const EX = {};
 /* sandbox pen */
 {
   EX.pen = new THREE.Group();
-  [[3.4, 2.6], [3.4, -2.6], [-3.4, 2.6], [-3.4, -2.6]].forEach(([x, z]) => {
+  [[4.2, 3.2], [4.2, -3.2], [-4.2, 3.2], [-4.2, -3.2]].forEach(([x, z]) => {
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1, 0.12), MAT.dark);
     post.position.set(x, 0.5, z); EX.pen.add(post);
   });
-  const ropePts = [[3.4, 2.6], [3.4, -2.6], [-3.4, -2.6], [-3.4, 2.6], [3.4, 2.6]]
+  const ropePts = [[4.2, 3.2], [4.2, -3.2], [-4.2, -3.2], [-4.2, 3.2], [4.2, 3.2]]
     .map(([x, z]) => new THREE.Vector3(x, 1, z));
   EX.pen.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ropePts), new THREE.LineBasicMaterial({ color: 0xF5D200 })));
   EX.pen.scale.setScalar(0.001);
@@ -1091,7 +1091,7 @@ Object.values(EX).forEach(v => (Array.isArray(v) ? v : [v]).forEach(g => { if (g
 /* obstacle cones inside the sandbox pen (slide 15) */
 {
   EX.cones = new THREE.Group();
-  [[2.55, 0], [-1.3, 2.2], [-1.3, -2.2]].forEach(([x, z]) => {
+  [[2.9, 0], [-1.5, 2.6], [-1.5, -2.6]].forEach(([x, z]) => {
     const geo = new THREE.ConeGeometry(0.34, 0.85, 4);
     const cone = new THREE.Mesh(geo, MAT.acid);
     cone.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), MAT.ink));
@@ -1154,13 +1154,13 @@ const SCENES = {
   engine:      { carX: -2.6, cam: { r: 9.5, theta: -0.55, phi: 1.2, ty: 1, lookX: -4.15 },  parts: { engine: 1 }, fx: { gear: true }, gridOp: 0.5 },
   'engine-close': { carX: -2.8, cam: { r: 3.4, theta: -0.5, phi: 1.2, ty: 0.95, lookX: -3.7 }, parts: { engine: 1 }, spin: true, fx: { gear: true }, gridOp: 0.5 },
   assemble:    { carX: -2.2, cam: { r: 12.5, theta: -0.5, phi: 1.18, ty: 1 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, stagger: true, gridOp: 0.5 },
-  driving:     { carX: -2.2, cam: { r: 15.5, theta: -0.7, phi: 1.15, ty: 0.85 }, parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, drive: 1, gridOp: 0.5 },
+  driving:     { carX: -2.2, cam: { r: 16, theta: -0.7, phi: 1.15, ty: 1 }, parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, drive: 1, gridOp: 0.5 },
   showcase:    { carX: 0,    cam: { r: 15, theta: -0.7, phi: 0.72, ty: 0.9 },    parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, orbit: true, gridOp: 0.45 },
   parked:      { carX: -8.6, cam: { r: 14.5, theta: -0.35, phi: 1.2, ty: 1 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, gridOp: 0.4 },
-  skill:       { carX: -2.6, cam: { r: 15.5, theta: -0.6, phi: 1.15, ty: 0.85 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { cartridge: true }, gridOp: 0.45 },
-  mcp:         { carX: -1.2, cam: { r: 17.5, theta: -1.0, phi: 1.05, ty: 0.9 },   parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { socket: true, plugs: true }, gridOp: 0.45 },
+  skill:       { carX: -2.6, cam: { r: 16.5, theta: -0.6, phi: 1.15, ty: 0.85 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { cartridge: true }, gridOp: 0.45 },
+  mcp:         { carX: -1.2, cam: { r: 18.5, theta: -1.0, phi: 1.05, ty: 0.9 },   parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { socket: true, plugs: true }, gridOp: 0.45 },
   plan:        { carX: -2.6, cam: { r: 13.5, theta: -0.5, phi: 1.05, ty: 0.8 }, parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { route: true }, gridOp: 0.45 },
-  sandbox:     { carX: 0,    cam: { r: 15.5, theta: -0.7, phi: 1.1, ty: 0.9 }, parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { pen: true, cones: true }, circle: true, gridOp: 0.45 },
+  sandbox:     { carX: 0,    cam: { r: 19.5, theta: -0.7, phi: 1.1, ty: 0.95 }, parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, fx: { pen: true, cones: true }, circle: true, gridOp: 0.45 },
   exploded:    { carX: 0,    cam: { r: 18.5, theta: -0.6, phi: 1.05, ty: 1.2 },  parts: { engine: 1, chassis: 1, cabin: 1, wheels: 1 }, explode: 1, orbitSlow: true, fx: { cartridge: true, socket: true, plugs: true, route: true, pen: true }, gridOp: 0.45 },
   huehunch:    { carX: 0,    cam: { r: 12, theta: -0.55, phi: 1.1, ty: 0.95, lookX: 1.8 }, parts: {}, fx: { emblem: 'cells' }, gridOp: 0.45 },
   arena:       { carX: 0,    cam: { r: 12, theta: -0.55, phi: 1.1, ty: 0.95, lookX: 1.8 }, parts: {}, fx: { emblem: 'cube' }, gridOp: 0.45 },
@@ -1212,13 +1212,14 @@ function setScene(name) {
   cur = SCENES[name] || SCENES.hidden;
   sceneTime = 0;
   P.engine.rotation.y = 0;
+  /* each slide always opens with its authored camera — drag never carries over */
+  dragTheta = 0; dragPhi = 0;
   visT.engine = cur.parts.engine ? 1 : 0;
   visT.chassis = cur.parts.chassis ? 1 : 0;
   visT.cabin = cur.parts.cabin ? 1 : 0;
   visT.wheels = cur.parts.wheels ? 1 : 0;
   const d = cur.stagger ? { engine: 0, chassis: 0.25, cabin: 0.55, wheels: 0.4 } : { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
   Object.keys(d).forEach(k => visDelay[k] = d[k]);
-  if (name === 'showcase' || name === 'exploded') { dragTheta = 0; dragPhi = 0; }
   if (name === 'exploded') { explodeMode = 1; explodeClock = 0; }
   else if (name === 'showcase') {
     explodeMode = 0; explodeClock = 0; explodedOn = false;
@@ -1325,8 +1326,8 @@ function tick(now) {
   /* sandbox: slow circle inside the pen, body leaning into it */
   if (cur.circle && !REDUCED) {
     carCircle += dt * 0.45;
-    car.position.x = Math.cos(carCircle) * 1.7;
-    car.position.z = Math.sin(carCircle) * 1.7;
+    car.position.x = Math.cos(carCircle) * 1.9;
+    car.position.z = Math.sin(carCircle) * 1.9;
     car.rotation.y = Math.atan2(Math.cos(carCircle), Math.sin(carCircle));
     car.rotation.z = -0.055;
   } else if (cur.depart) {
