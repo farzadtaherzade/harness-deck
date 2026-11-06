@@ -212,6 +212,50 @@ P.headlights = [];
   const h = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.16, 0.34), MAT.head);
   h.position.set(-2.26, 0.2, z); P.headlights.push(h); P.chassis.add(h);
 });
+
+/* === detail package: everything rides with its parent part === */
+{
+  /* cabin windows: side insets + windshield */
+  const winSide = new THREE.BoxGeometry(1.5, 0.36, 0.06);
+  [0.93, -0.93].forEach(z => {
+    const win = new THREE.Mesh(winSide, MAT.dark);
+    win.position.set(-0.1, 0.05, z);
+    P.cabin.add(win);
+  });
+  const shield = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 1.4), MAT.dark);
+  shield.position.set(-1.16, 0.05, 0);
+  P.cabin.add(shield);
+  /* side mirrors on stalks */
+  [[1.0], [-1.0]].forEach(([z]) => {
+    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.22), MAT.acid);
+    mirror.position.set(-0.95, 0.28, z);
+    P.cabin.add(mirror);
+  });
+  /* bumpers + exhaust + headlight bezels (chassis) */
+  [2.24, -2.24].forEach(x => {
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.28, 1.9), MAT.dark);
+    bumper.position.set(x, 0.02, 0);
+    P.chassis.add(bumper);
+  });
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.3, 10), MAT.dark);
+  pipe.rotation.z = Math.PI / 2;
+  pipe.position.set(-2.32, -0.1, -0.55);
+  P.chassis.add(pipe);
+  [[-2.3, 0.6], [-2.3, -0.6]].forEach(([x, z]) => {
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.42), MAT.dark);
+    bezel.position.set(x, 0.2, z);
+    P.chassis.add(bezel);
+  });
+  /* 5-spoke star inside every wheel */
+  const spokeGeo = new THREE.BoxGeometry(0.07, 0.8, 0.07);
+  P.wheels.forEach(w => {
+    for (let i = 0; i < 5; i++) {
+      const spoke = new THREE.Mesh(spokeGeo, MAT.acid);
+      spoke.rotation.z = i * Math.PI / 5;
+      w.add(spoke);
+    }
+  });
+}
 car.add(P.chassis, P.engine, P.cabin); /* wheels join at creation; headlights stay under the chassis */
 
 /* --- dimension extras --- */
@@ -324,6 +368,24 @@ Object.values(EX).forEach(v => (Array.isArray(v) ? v : [v]).forEach(g => { if (g
   EX.rings.scale.setScalar(0.001);
   scene.add(EX.rings);
 }
+/* soft contact shadow under the car — canvas radial falloff, follows the car */
+{
+  const sc = document.createElement('canvas');
+  sc.width = sc.height = 128;
+  const g2 = sc.getContext('2d');
+  const grad = g2.createRadialGradient(64, 64, 6, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(0,0,0,0.85)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g2.fillStyle = grad;
+  g2.fillRect(0, 0, 128, 128);
+  EX.shadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(6.6, 3.4),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, opacity: 0.55, depthWrite: false })
+  );
+  EX.shadow.rotation.x = -Math.PI / 2;
+  EX.shadow.position.y = 0.02;
+  scene.add(EX.shadow);
+}
 
 /* --- scene book --- */
 const SCENES = {
@@ -346,8 +408,23 @@ const SCENES = {
 };
 
 /* state — everything eases toward its scene target */
-const st = { carX: 0, r: 14, theta: 0, phi: 1.25, ty: 1, lookX: 0, explode: 0, gridOp: 0.35 };
-let explodeTarget = 0; /* driven by the button on the interactive slide, or the exploded scene */
+const st = { carX: 0, r: 14, theta: 0, phi: 1.25, ty: 1, lookX: 0, gridOp: 0.35 };
+/* (explode state lives in explodeMode/explodeClock above) */
+/* staged explosion: per-part progress, springy open, smooth close */
+let explodeMode = 0, explodeClock = 0;
+const EXPLODE_ORDER = { wheels: 0, engine: 1, chassis: 2, cabin: 3 };
+const EASE_OUT_BACK = p => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2);
+const EASE_IN_OUT = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+function explodeK(name) {
+  const i = EXPLODE_ORDER[name], D = 0.65, GAP = 0.14;
+  if (explodeMode === 1) {
+    const local = Math.min(1, Math.max(0, (explodeClock - i * GAP) / D));
+    return EASE_OUT_BACK(local);
+  }
+  const rev = 3 - i;
+  const local = Math.min(1, Math.max(0, (explodeClock - rev * GAP) / D));
+  return 1 - EASE_IN_OUT(local);
+}
 const vis = { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
 const visT = { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
 const visDelay = { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
@@ -360,7 +437,13 @@ let wheelAngle = 0, gridOff = 0, carCircle = 0, departV = 0;
 const EXPLODE_POS = {
   engine: new THREE.Vector3(-2.6, 2.1, 0),
   chassis: new THREE.Vector3(0, 0.75, 0),
-  cabin: new THREE.Vector3(2.7, 1.75, 0)
+  cabin: new THREE.Vector3(2.9, 1.5, 0)
+};
+/* fixed assembled positions — lerp base→exploded, never from the live position */
+const EXPLODE_BASE = {
+  engine: new THREE.Vector3(-1.55, 0.85, 0),
+  chassis: new THREE.Vector3(0, 0.75, 0),
+  cabin: new THREE.Vector3(0.35, 1.5, 0)
 };
 const WHEEL_EXPLODE = [[1.9, 1.6], [1.9, -1.6], [-1.9, 1.6], [-1.9, -1.6]];
 
@@ -375,13 +458,13 @@ function setScene(name) {
   const d = cur.stagger ? { engine: 0, chassis: 0.25, cabin: 0.55, wheels: 0.4 } : { engine: 0, chassis: 0, cabin: 0, wheels: 0 };
   Object.keys(d).forEach(k => visDelay[k] = d[k]);
   if (name === 'showcase' || name === 'exploded') { dragTheta = 0; dragPhi = 0; }
-  if (name === 'exploded') { explodeTarget = 1; }
+  if (name === 'exploded') { explodeMode = 1; explodeClock = 0; }
   else if (name === 'showcase') {
-    explodeTarget = 0; explodedOn = false;
+    explodeMode = 0; explodeClock = 0; explodedOn = false;
     orbitSlide.classList.remove('exploded');
     const eb = $('#explodeBtn');
     eb.textContent = 'باز شدن قطعات'; eb.classList.remove('on');
-  } else explodeTarget = 0;
+  } else explodeMode = 0;
   if (name === 'plan') { routeDraw = 0; $('#approveChip').classList.add('show'); }
   else $('#approveChip').classList.remove('show');
   if (name === 'skill') cartT = 0;
@@ -412,7 +495,8 @@ orbitSlide.addEventListener('pointermove', e => {
 let explodedOn = false;
 $('#explodeBtn').addEventListener('click', () => {
   explodedOn = !explodedOn;
-  explodeTarget = explodedOn ? 1 : 0;
+  explodeMode = explodedOn ? 1 : 0;
+  explodeClock = 0;
   orbitSlide.classList.toggle('exploded', explodedOn);
   $('#explodeBtn').textContent = explodedOn ? 'بستن قطعات' : 'باز شدن قطعات';
   $('#explodeBtn').classList.toggle('on', explodedOn);
@@ -423,6 +507,7 @@ const easeOut = p => 1 - Math.pow(1 - p, 3);
 let last = performance.now(), tAcc = 0;
 function tick(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; tAcc += dt; sceneTime += dt;
+  explodeClock += dt; /* drives the staged explode/open-close animation */
   const k = 1 - Math.pow(0.0004, dt); /* smoothing toward scene targets */
 
   st.carX += (cur.carX - st.carX) * k;
@@ -431,22 +516,19 @@ function tick(now) {
   st.phi += (cur.cam.phi - st.phi) * k;
   st.ty += (cur.cam.ty - st.ty) * k;
   st.lookX += ((cur.cam.lookX || 0) - st.lookX) * k;
-  st.explode += (explodeTarget - st.explode) * k;
   st.gridOp += ((cur.gridOp || 0.4) - st.gridOp) * k;
   gridA.material.opacity = gridB.material.opacity = st.gridOp;
 
   if (cur.orbit && !dragging && !REDUCED) st.theta += dt * 0.1;
   if (cur.orbitSlow && !dragging && !REDUCED) st.theta += dt * 0.05;
 
-  /* part presence (with optional stagger) + explode lerp */
+  /* part presence (with optional stagger) + staged explode: base → exploded, deterministic */
   [['engine', P.engine], ['chassis', P.chassis], ['cabin', P.cabin]].forEach(([kk, g]) => {
     const target = sceneTime >= visDelay[kk] ? visT[kk] : 0;
     vis[kk] += (target - vis[kk]) * (1 - Math.pow(0.00005, dt));
     g.visible = vis[kk] > 0.02;
     g.scale.setScalar(Math.max(0.001, vis[kk]));
-    const base = g.position.clone();
-    const exp = EXPLODE_POS[kk] || base;
-    g.position.lerpVectors(base, exp, st.explode);
+    g.position.copy(EXPLODE_BASE[kk]).lerp(EXPLODE_POS[kk], explodeK(kk));
   });
   P.wheels.forEach((w, i) => {
     const target = sceneTime >= visDelay.wheels ? visT.wheels : 0;
@@ -455,10 +537,15 @@ function tick(now) {
     w.visible = vis.wheels > 0.02;
     w.scale.setScalar(Math.max(0.001, vis.wheels));
     const bx = w.userData.bx, bz = w.userData.bz;
-    w.position.x = bx + (WHEEL_EXPLODE[i][0] - bx) * st.explode;
-    w.position.z = bz + (WHEEL_EXPLODE[i][1] - bz) * st.explode;
-    w.position.y = 0.45;
+    const kw = explodeK('wheels');
+    w.position.x = bx + (WHEEL_EXPLODE[i][0] - bx) * kw;
+    w.position.z = bz + (WHEEL_EXPLODE[i][1] - bz) * kw;
+    w.position.y = 0.45 + (cur.drive && !REDUCED ? Math.sin(tAcc * 9 + i * 1.7) * 0.018 : 0);
   });
+  /* contact shadow follows the car, never bobs */
+  EX.shadow.position.x = car.position.x;
+  EX.shadow.position.z = car.position.z;
+  EX.shadow.visible = vis.engine > 0.05 || vis.chassis > 0.05;
 
   /* motion: wheels spin + steer-wiggle, grid scrolls, body bobs, headlights flicker */
   if (cur.drive && !REDUCED) {
@@ -474,12 +561,13 @@ function tick(now) {
     P.wheels.forEach(w => { w.rotation.y = 0; });
   }
 
-  /* sandbox: slow circle inside the pen */
+  /* sandbox: slow circle inside the pen, body leaning into it */
   if (cur.circle && !REDUCED) {
     carCircle += dt * 0.45;
     car.position.x = Math.cos(carCircle) * 1.7;
     car.position.z = Math.sin(carCircle) * 1.7;
     car.rotation.y = Math.atan2(Math.cos(carCircle), Math.sin(carCircle));
+    car.rotation.z = -0.055;
   } else if (cur.depart) {
     /* drive away from the camera, into the fog */
     departV = Math.min(9, departV + dt * 4);
@@ -506,7 +594,7 @@ function tick(now) {
   if (cur.fx && cur.fx.cartridge) {
     cartT = Math.min(1, cartT + dt * 0.6);
     const p = easeOut(cartT);
-    EX.cartridge.position.set(st.carX + 0.35 + st.explode * 1.65 - (1 - p) * 5.7, (4.6 - p * 2.45) + st.explode * 0.5, 2.2 - p * 2.2);
+    EX.cartridge.position.set(st.carX + 0.35 + explodeK('cabin') * 2.0 - (1 - p) * 5.7, (4.6 - p * 2.45) - explodeK('cabin') * 0.3, 2.2 - p * 2.2);
     EX.cartridge.rotation.z = (1 - p) * 0.9;
     EX.cartridge.scale.setScalar(0.001 + p);
   } else EX.cartridge.scale.setScalar(0.001);
@@ -751,8 +839,9 @@ document.addEventListener('slidechange', e => {
   if (e.detail.index === 12) tokenPlay();
 });
 pres = new Presentation(startIdx);
-/* deep-link the exploded state: ?slide=7&explode=1 */
-if (params.get('explode') === '1') setTimeout(() => { if (pres.i === 6) $('#explodeBtn').click(); }, 1400);
+/* deep-link the exploded state: ?slide=7&explode=1 — or explode=cycle to open then close (verification) */
+if (params.get('explode') === '1' || params.get('explode') === 'cycle') setTimeout(() => { if (pres.i === 6) $('#explodeBtn').click(); }, 1400);
+if (params.get('explode') === 'cycle') setTimeout(() => { if (pres.i === 6 && explodedOn) $('#explodeBtn').click(); }, 3800);
 requestAnimationFrame(tick);
 </script>
 </body>
